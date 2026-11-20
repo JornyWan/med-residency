@@ -111,9 +111,15 @@ def test_named_files_exist(checkout):
             assert (ROOT / name).exists() or Path(name).exists(), f"{page.relative_to(ROOT)}: {name}"
 
 
+def links(page: Path) -> list[str]:
+    """The targets of the Markdown links of a page and of its HTML links and images."""
+    text = prose(page)
+    return re.findall(r"\]\(([^)\s]+)\)", text) + re.findall(r'\b(?:href|src|srcset)="([^"]+)"', text)
+
+
 def test_links_resolve():
     for page in PAGES:
-        for link in re.findall(r"\]\(([^)\s]+)\)", prose(page)):
+        for link in links(page):
             if link.startswith("http"):
                 continue
             path, _, anchor = link.partition("#")

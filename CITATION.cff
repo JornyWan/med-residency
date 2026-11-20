@@ -6,6 +6,7 @@ message: >-
 type: software
 authors:
   - name: "The MedResidency authors"
+repository-code: "https://github.com/JornyWan/med-residency"
 version: 0.1.0
 date-released: "2026-11-20"
 license: Apache-2.0
