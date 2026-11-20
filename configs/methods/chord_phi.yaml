@@ -1,0 +1,6 @@
+description: >-
+  CHORD-phi: OPD with a small constant SFT term, weighted per token by p (1 - p). The token weight keeps the SFT
+  term on tokens the student is unsure about.
+method:
+  name: chord_phi
+  mu: 0.1

@@ -1,0 +1,44 @@
+# Defaults of every run. They are overridden, in this order, by the task, the method, the task's block for that method,
+# a recipe file and key=value arguments on the command line. `medres train ... --print-config` shows the result.
+run:
+  name: null                 # default: <task>_<method>_s<seed> (with a recipe: <recipe file name>_s<seed>)
+  seed: 42                   # model seed and data-order seed (ms-swift keeps data_seed at 42 unless it is passed)
+  output_root: runs
+  resume: false              # continue from the last checkpoint of this run
+student:
+  model: null                # a name of configs/models.yaml
+  init: null                 # start from this checkpoint directory instead of the released weights
+teachers: {}                 # routing tag -> model name; every training row names its teacher in `teacher_tag`
+data:                        # relative paths are resolved against $MEDRES_DATA (default: ./data)
+  prompts: null              # on-policy prompts: messages, images, teacher_tag, and solution (used by rewards)
+  labels: null               # prompts with reference answers: label SFT
+  teacher_outputs: null      # prompts with the teachers' answers: offline KD and the SFT term of the mixed methods
+train:
+  steps: 300
+  save_steps: 50
+  lr: 5.0e-6                 # constant, no warm-up
+  sequences_per_step: 64     # sequences per optimizer step; gradient accumulation is derived from it
+  per_device_batch: 4
+  replay_per_device_batch: 4 # batch of the SFT term of CHORD, CHORD-phi and AdaOPD
+  max_completion: 512        # response limit in tokens
+  prompt_budget: 2048        # max_length = max_completion + prompt_budget
+  freeze_vision: true
+  rollout_gpu_memory: 0.3    # share of a student GPU given to the colocated vLLM rollout engine
+  log_completions: true      # ms-swift writes sampled rollouts to <run>/completions.jsonl: never share that file
+  banned_tokens:             # never sampled in rollouts: a sampled image placeholder breaks the training forward pass
+    - "<|vision_start|>"
+    - "<|vision_end|>"
+    - "<|vision_pad|>"
+    - "<|image_pad|>"
+    - "<|video_pad|>"
+  swift_args: {}             # extra ms-swift flags, passed verbatim; they win over the generated ones
+teacher_server:
+  gpu_memory: 0.6            # vLLM memory share of each teacher on its GPU(s)
+  max_num_seqs: 8
+  max_batched_tokens: 2048
+  startup_timeout: 3600      # seconds to wait for one teacher
+hardware:
+  gpus: 4                    # the devices of CUDA_VISIBLE_DEVICES when it is set, else 0..gpus-1
+  teacher_gpus: 2            # the last ones serve the teachers; methods without a teacher train on all GPUs
+method:
+  name: null

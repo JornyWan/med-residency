@@ -1,0 +1,8 @@
+description: >-
+  CHORD-style schedule: SFT on the teachers' answers fading into OPD along a cosine. The loss is
+  (1 - mu) * OPD + mu * SFT, with mu decayed from `peak` to `valley` over `decay_steps`.
+method:
+  name: chord
+  peak: 1.0
+  valley: 0.0
+  decay_steps: null   # default: train.steps

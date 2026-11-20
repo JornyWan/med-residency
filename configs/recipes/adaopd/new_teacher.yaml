@@ -1,0 +1,7 @@
+# A new teacher for a trained student (supplementary Table S9). The student is the OPD student of the reasoning-VQA
+# task; the report teacher is added and training continues with both teachers. Names no method: add --method.
+#   medres train --task med_vqa --method opd --seed 42            # the trained student
+#   medres train configs/recipes/adaopd/new_teacher.yaml --method adaopd --seed 42
+# For another seed, start from that seed's student: student.init=runs/med_vqa_opd_s2/checkpoint-300 --seed 2
+task: cxr_report_vqa
+student: {init: runs/med_vqa_opd_s42/checkpoint-300}

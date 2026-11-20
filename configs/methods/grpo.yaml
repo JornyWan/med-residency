@@ -1,0 +1,8 @@
+description: >-
+  Reinforcement learning with GRPO and a task reward (no teacher). Several samples per prompt, group-normalized
+  advantages and a KL penalty to the initial policy; the reward is set by the task (`medres list rewards`).
+method:
+  name: grpo
+  reward: null
+  beta: 0.04
+  num_generations: 4

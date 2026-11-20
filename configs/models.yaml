@@ -1,0 +1,27 @@
+# Model zoo. A model is used through its name; its weights are expected in $MEDRES_MODELS/<path> (default path: the
+# last part of the hub id), e.g. after scripts/download_models.sh. `model_type` is the ms-swift model type and, unless
+# `template` is given, also the chat template. Per-token distillation needs teachers that share the student's
+# tokenizer, so a teacher must come from the student's model family.
+#
+# To add a model, add one line here (or a `models:` block in a recipe).
+
+# --- students -------------------------------------------------------------------------------------------------------
+qwen3-vl-2b: {hub: Qwen/Qwen3-VL-2B-Instruct, model_type: qwen3_vl}
+qwen3-vl-4b: {hub: Qwen/Qwen3-VL-4B-Instruct, model_type: qwen3_vl}
+qwen2-vl-2b: {hub: Qwen/Qwen2-VL-2B-Instruct, model_type: qwen2_vl}
+
+# --- teachers (Qwen3-VL family) -------------------------------------------------------------------------------------
+unirg-cxr: {hub: microsoft/UniRG-CXR, model_type: qwen3_vl}          # chest X-ray report generation, 8B
+medix-r1-8b: {hub: MBZUAI/MediX-R1-8B, model_type: qwen3_vl}         # reasoning medical VQA, 8B
+qoq-med3-8b: {hub: ddvd233/QoQ-Med3-VL-8B, model_type: qwen3_vl}     # multimodal clinical reasoning, 8B
+sonoreasoner-8b: {hub: QingboKang/SonoReasoner-8B, model_type: qwen3_vl}  # ultrasound reasoning, 8B
+
+# --- teachers (Qwen2-VL family): the eight modality experts of Med-R1 --------------------------------------------------
+med-r1-ct: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_CT, model_type: qwen2_vl}
+med-r1-mri: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_MRI, model_type: qwen2_vl}
+med-r1-xray: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_X-Ray, model_type: qwen2_vl}
+med-r1-fundus: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_Fundus, model_type: qwen2_vl}
+med-r1-dermo: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_Dermo, model_type: qwen2_vl}
+med-r1-micro: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_Micro, model_type: qwen2_vl}
+med-r1-oct: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_OCT, model_type: qwen2_vl}
+med-r1-us: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_US, model_type: qwen2_vl}

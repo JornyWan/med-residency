@@ -1,0 +1,24 @@
+description: >-
+  Two teachers, one student. Report generation (10,000 MIMIC-CXR studies, report specialist) and reasoning VQA
+  (10,000 PMC-VQA questions, reasoning teacher) in one run; each row is routed to its teacher by `teacher_tag`.
+student: {model: qwen3-vl-2b}
+teachers: {medix: medix-r1-8b, unirg: unirg-cxr}
+data:
+  prompts: cxr_report_vqa/train.jsonl
+  teacher_outputs: cxr_report_vqa/train_teacher.jsonl
+train:
+  lr: 5.0e-6
+  max_completion: 2048
+eval:
+  test: {mimic_cxr: cxr_report/test_mimic.jsonl, iu_xray: cxr_report/test_iu.jsonl, pmc_vqa: med_vqa/test_pmc_vqa.jsonl}
+  metrics: [1/RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert-5, CheXbert-14, GREEN, accuracy, truncated]
+overrides:
+  # The language gap is measured on the report teacher only (the reasoning teacher is already close to the student),
+  # and the SFT term replays that teacher's outputs.
+  adaopd:
+    data: {teacher_outputs: cxr_report/train_teacher.jsonl}
+    method: {measure_tags: [unirg]}
+  # 2,048-token samples and a reward server on the first GPU: two sequences per device.
+  grpo:
+    train: {per_device_batch: 2}
+    method: {reward: mixed_report_vqa}

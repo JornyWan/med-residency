@@ -1,0 +1,8 @@
+description: >-
+  On-policy distillation (multi-teacher when the task has several teachers). The student samples a response, the
+  teacher named in the row's `teacher_tag` scores every sampled token, and the student is updated with the per-token
+  advantage log p_teacher - log p_student.
+method:
+  name: opd
+  repetition_penalty: null   # sampling penalty of the rollouts, e.g. 1.05 (a common fix for looping; off by default)
+  monitor_gap: false         # also log the language gap of every step (one extra image-free teacher pass)

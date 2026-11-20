@@ -1,0 +1,39 @@
+description: >-
+  Eight modality experts, one student. The Med-R1 experts (CT, MRI, X-ray, fundus, dermoscopy, microscopy, OCT,
+  ultrasound; Qwen2-VL-2B each) are merged into one Qwen2-VL-2B student on OmniMedVQA with the Med-R1 protocol.
+student: {model: qwen2-vl-2b}
+teachers:
+  CT: med-r1-ct
+  MRI: med-r1-mri
+  X-Ray: med-r1-xray
+  Fundus: med-r1-fundus
+  Dermo: med-r1-dermo
+  Micro: med-r1-micro
+  OCT: med-r1-oct
+  US: med-r1-us
+data:
+  prompts: modality_experts/train.jsonl
+  teacher_outputs: modality_experts/train_teacher.jsonl
+train:
+  steps: 500
+  save_steps: 100
+  lr: 1.0e-6
+  sequences_per_step: 128
+  per_device_batch: 8
+  max_completion: 512
+  prompt_budget: 1536
+teacher_server:
+  # Four experts share one 48 GB card: prompt log-probabilities need memory outside vLLM's budget, so the static
+  # budget is small and the tokens per forward pass are capped.
+  gpu_memory: 0.13
+  max_batched_tokens: 1024
+eval:
+  test: {omnimedvqa: modality_experts/test}
+  metrics: [accuracy per modality, micro and macro accuracy]
+overrides:
+  adaopd: {method: {measure_tags: [CT, MRI, US]}}
+  two_stage: {method: {sft_steps: 200}}   # 200 + 300 steps, both ending on a checkpoint
+  grpo:
+    method: {reward: answer_exact}
+    # Med-R1 adds ms-swift's built-in `format` reward (<think>...</think><answer>...</answer>) to the accuracy
+    train: {swift_args: {reward_funcs: [answer_exact, format]}}

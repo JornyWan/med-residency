@@ -1,0 +1,8 @@
+description: >-
+  Generalized knowledge distillation (GKD): generalized JSD to the teacher's top-k distribution. Sequences are
+  student samples (lmbda = 1) or dataset answers (lmbda = 0), as in Agarwal et al., 2024.
+method:
+  name: gkd
+  topk: 20      # teacher log-probabilities per position
+  lmbda: 1.0    # share of on-policy (student-sampled) sequences
+  beta: 0.5     # interpolation of the generalized JSD

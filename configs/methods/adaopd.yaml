@@ -1,0 +1,12 @@
+description: >-
+  AdaOPD: OPD mixed with SFT on the teachers' answers, weighted by the measured language gap. The loss is
+  (1 - mu) * OPD + mu * SFT with mu = clip((EMA(gap) - tau) / max(gap_0 - tau, 1), 0, 1), where the gap is the mean of
+  log p_student(y) - log p_teacher(y | no image) over fresh tokens of the student's samples.
+method:
+  name: adaopd
+  tau: 1.0             # threshold in nats: below it the step is pure OPD. Select it on validation.
+  ema: 0.9             # smoothing of the gap across steps
+  measure_tags: []     # teachers whose rows measure the gap (empty: all)
+  fresh_tokens: true   # skip tokens that complete a 4-gram already present in the same response
+  signal: lang         # lang: gap to the image-free teacher; kl: gap to the teacher with the image (ablation)
+  gap0: null           # normalizer; default: the gap of the first step

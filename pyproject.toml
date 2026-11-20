@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medresidency"
+version = "0.1.0"
+description = "Open post-training for medical vision-language models: SFT, distillation and RL on one protocol."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+keywords = ["medical imaging", "vision-language model", "post-training", "distillation", "reinforcement learning"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+# The core (configuration, command building, statistics) needs only these. Training and scoring live in two separate
+# environments whose pins conflict; scripts/install_train_env.sh and scripts/install_metrics_env.sh build them.
+dependencies = ["pyyaml>=6", "numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+medres = "medresidency.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["src/medresidency/data/third_party"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "E731", "E741", "B905"]

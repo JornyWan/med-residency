@@ -1,0 +1,7 @@
+description: >-
+  Two stages: offline distillation, then OPD. The weight on SFT switches from 1 to 0 after `sft_steps`; the final
+  checkpoint is <run>/checkpoint-<steps - sft_steps>.
+method:
+  name: two_stage
+  sft_steps: 150
+  stage1_checkpoint: null   # reuse an existing offline-KD checkpoint instead of training stage 1

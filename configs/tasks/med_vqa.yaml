@@ -1,0 +1,16 @@
+description: >-
+  Reasoning medical VQA. A 2B student learns from an 8B reasoning teacher on 20,000 PMC-VQA questions (multiple
+  choice, step-by-step answer); tested on PMC-VQA, MedXpertQA-MM and the health subjects of MMMU.
+student: {model: qwen3-vl-2b}
+teachers: {medix: medix-r1-8b}
+data:
+  prompts: med_vqa/train.jsonl
+  teacher_outputs: med_vqa/train_teacher.jsonl
+train:
+  lr: 1.0e-6
+  max_completion: 2048
+eval:
+  test: {pmc_vqa: med_vqa/test_pmc_vqa.jsonl, medxpertqa_mm: med_vqa/test_medxpertqa_mm.jsonl, mmmu_health: med_vqa/test_mmmu_health.jsonl}
+  metrics: [accuracy, truncated]
+overrides:
+  grpo: {method: {reward: mcq_accuracy}}

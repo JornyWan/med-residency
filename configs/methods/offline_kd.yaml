@@ -1,0 +1,2 @@
+description: "Offline distillation: supervised fine-tuning on the teachers' own answers (data.teacher_outputs)."
+method: {name: offline_kd}

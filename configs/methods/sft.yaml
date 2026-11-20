@@ -1,0 +1,2 @@
+description: Supervised fine-tuning on reference answers (data.labels), without a teacher.
+method: {name: sft}

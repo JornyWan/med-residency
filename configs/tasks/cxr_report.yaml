@@ -1,0 +1,18 @@
+description: >-
+  Chest X-ray report generation. A 2B student learns from an 8B report specialist on 20,000 MIMIC-CXR studies
+  (frontal view, findings and impression); tested on the ReXrank MIMIC-CXR and IU X-ray splits.
+student: {model: qwen3-vl-2b}
+teachers: {unirg: unirg-cxr}
+data:
+  prompts: cxr_report/train.jsonl
+  labels: cxr_report/train_labels.jsonl
+  teacher_outputs: cxr_report/train_teacher.jsonl
+train:
+  lr: 5.0e-6
+  max_completion: 512
+eval:
+  validation: cxr_report/val.jsonl
+  test: {mimic_cxr: cxr_report/test_mimic.jsonl, iu_xray: cxr_report/test_iu.jsonl}
+  metrics: [1/RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert-5, CheXbert-14, GREEN, truncated]
+overrides:
+  grpo: {method: {reward: report_radcliq}}
