@@ -8,7 +8,8 @@
    settings share one process. An output file that exists is kept.
 2. `medres eval report-score` for report test sets (in the metrics environment: set MEDRES_METRICS_PYTHON) and
    `medres eval vqa` for VQA test sets.
-3. <out>/summary.json: the corpus-level numbers of every test set.
+3. <out>/summary.json: the corpus-level numbers of every test set. A later call for the same checkpoint with other
+   `--sets` or the other `--split` adds its sets to the file.
 
 Output directory: evals/<run>/<checkpoint> (the last two parts of --model) unless --out is given. Every step is a
 tool of its own (`medres eval --help`), for shards over several GPUs or several checkpoints in one scoring pass.
@@ -121,7 +122,8 @@ def main():
     for cmd in generate_commands(todo, a.model, extra):
         subprocess.run(cmd, check=True)
 
-    summary = {}
+    summary_file = out / "summary.json"
+    summary = json.loads(summary_file.read_text()) if summary_file.exists() else {}  # sets of earlier calls stay
     for s in sets:
         if s["kind"] == "vqa":
             summary[s["name"]] = vqa.score_file(jsonl.read(s["file"]), s["out"])
@@ -133,12 +135,12 @@ def main():
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
             with open(s["out"].removesuffix(".jsonl") + ".summary.json") as f:
                 summary[s["name"]] = json.load(f)
-    with open(out / "summary.json", "w") as f:
+    with open(summary_file, "w") as f:
         json.dump(summary, f, indent=1)
     print(f"\n{a.model} on {a.task}")
     for s in sets:
         print(f"  {s['name']:<16}{headline(s['kind'], summary[s['name']])}")
-    print(f"-> {out / 'summary.json'}")
+    print(f"-> {summary_file}")
 
 
 if __name__ == "__main__":

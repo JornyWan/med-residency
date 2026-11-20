@@ -30,7 +30,8 @@ medres eval run --task cxr_report --model runs/cxr_report_adaopd_s42/checkpoint-
 | `--out DIR` | another output directory |
 
 A generation file that already exists is kept, so an interrupted evaluation continues where it stopped, and a
-second call with `--green` repeats the scoring but not the generation.
+second call with `--green` repeats the scoring but not the generation. A later call with other `--sets`, or with
+`--split validation`, adds its sets to the `summary.json` of the checkpoint.
 
 ## Output
 

@@ -200,6 +200,12 @@ def test_run_scores_generations_that_exist(tmp_path, monkeypatch, capsys):
     run.main()  # nothing to generate: no GPU needed
     assert json.loads((out / "summary.json").read_text())["pmc_vqa"]["micro_acc"] == 50.0
     assert "accuracy 50.00 (macro 66.67), n=4" in capsys.readouterr().out
+    jsonl.write(tmp_path / "data/med_vqa/test_mmmu_health.jsonl", data)
+    jsonl.write(out / "mmmu_health.jsonl", gens)
+    monkeypatch.setattr(sys, "argv", [*argv, "--sets", "mmmu_health"])
+    run.main()  # a second call adds its test set to the summary
+    assert set(json.loads((out / "summary.json").read_text())) == {"pmc_vqa", "mmmu_health"}
+    capsys.readouterr()
     for bad, message in (("--sets nope", "no test set nope"), ("", "test files not found")):
         monkeypatch.setattr(sys, "argv", [*argv, *bad.split()])
         with pytest.raises(SystemExit):
