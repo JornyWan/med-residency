@@ -299,7 +299,10 @@ def run_stage(cfg: dict, stage: methods.Stage, gpus: list[str], env_add: dict, m
             server.check()
 
         env_stage["CUDA_VISIBLE_DEVICES"] = ",".join(student)
-        if stage.n_gpus > 1:  # ms-swift then starts one process per card with torch.distributed.run
+        # With NPROC_PER_NODE ms-swift starts one process per card with torch.distributed.run. GKD needs that on a
+        # single card as well: the vLLM engine of its rollouts reads the rank variables of torchrun, and ms-swift sets
+        # them itself only in its GRPO trainer.
+        if stage.n_gpus > 1 or args.get("rlhf_type") == "gkd":
             env_stage.update(NPROC_PER_NODE=str(stage.n_gpus), MASTER_PORT=PORT if dry else str(free_port()))
         cmd = [*SWIFT, stage.command, *to_argv(args)]
         text.append(f"# trainer\n{shell(env_stage, cmd)}")

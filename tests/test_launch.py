@@ -112,6 +112,14 @@ def test_dry_run_prints_the_commands(capsys, task, method, expect):
         assert text in out, text
 
 
+def test_one_student_card_uses_torchrun_only_for_gkd(capsys):
+    layout = ["hardware.gpus=2", "hardware.teacher_gpus=1", "train.sequences_per_step=8", "--dry-run"]
+    cli.main(["train", "--task", "med_vqa", "--method", "gkd", *layout])
+    assert "NPROC_PER_NODE=1" in capsys.readouterr().out
+    cli.main(["train", "--task", "med_vqa", "--method", "opd", *layout])
+    assert "NPROC_PER_NODE" not in capsys.readouterr().out
+
+
 def test_reward_server_needs_the_metrics_environment(capsys, monkeypatch):
     with pytest.raises(SystemExit, match="MEDRES_METRICS_PYTHON"):
         cli.main(["train", "--task", "cxr_report", "--method", "grpo", "--dry-run"])
