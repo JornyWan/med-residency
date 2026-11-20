@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -70,8 +71,22 @@ def test_launch_record_on_a_node_without_git(monkeypatch):
     monkeypatch.setattr(launch.subprocess, "run", no_git)
     (stage,) = methods.build(config.load("med_vqa", "opd"))
     record = launch._record(stage, ["0", "1"], 0)
-    assert record["code"] is None
+    assert record["code"] == launch.head_commit(Path(launch.__file__).resolve().parents[2] / ".git")
     assert record["stage"] == stage.name and record["gpus"] == ["0", "1"]
+
+
+def test_head_commit_reads_the_files_of_a_clone(tmp_path):
+    assert launch.head_commit(tmp_path) is None  # not a clone
+    (tmp_path / "HEAD").write_text("ref: refs/heads/main\n")
+    (tmp_path / "packed-refs").write_text(
+        "# pack-refs with: peeled fully-peeled sorted\n" + "a" * 40 + " refs/heads/main\n"
+    )
+    assert launch.head_commit(tmp_path) == "aaaaaaa"
+    (tmp_path / "refs/heads").mkdir(parents=True)
+    (tmp_path / "refs/heads/main").write_text("b" * 40 + "\n")
+    assert launch.head_commit(tmp_path) == "bbbbbbb"  # a loose ref is newer than the packed one
+    (tmp_path / "HEAD").write_text("c" * 40 + "\n")
+    assert launch.head_commit(tmp_path) == "ccccccc"  # detached HEAD
 
 
 def test_environment_keeps_what_the_caller_set(monkeypatch):

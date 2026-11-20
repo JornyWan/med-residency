@@ -225,16 +225,32 @@ def environment(cfg: dict, cache: str) -> dict:
     return {k: v for k, v in add.items() if k not in os.environ}
 
 
+def head_commit(git_dir: Path) -> str | None:
+    """The commit HEAD points at, read from the files of a .git directory."""
+    try:
+        head = (git_dir / "HEAD").read_text().strip()
+        if not head.startswith("ref: "):
+            return head[:7]  # detached HEAD
+        ref = head.removeprefix("ref: ")
+        if (git_dir / ref).is_file():
+            return (git_dir / ref).read_text()[:7]
+        for line in (git_dir / "packed-refs").read_text().splitlines():
+            if line.endswith(" " + ref):
+                return line[:7]
+    except OSError:
+        pass
+    return None
+
+
 def code_version() -> str | None:
-    """The commit of this clone, or None when git is not installed or the package is not in a clone."""
+    """The commit of this clone, or None when the package is not in a clone."""
+    root = Path(__file__).resolve().parents[2]
     try:
         git = subprocess.run(
-            ["git", "-C", str(Path(__file__).resolve().parents[2]), "describe", "--always", "--dirty"],
-            capture_output=True,
-            text=True,
+            ["git", "-C", str(root), "describe", "--always", "--dirty"], capture_output=True, text=True
         )
-    except OSError:  # compute nodes often have no git
-        return None
+    except OSError:  # compute nodes often have no git; without it nothing says whether the tree is dirty
+        return head_commit(root / ".git")
     return git.stdout.strip() or None
 
 
