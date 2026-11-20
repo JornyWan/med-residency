@@ -35,17 +35,23 @@ def join(prompts: list[dict], generations: list[dict], tags=None) -> tuple[list[
             f"error: generations for {n} of {len(prompts)} prompts ({len(gens) - n} with an unknown id): "
             "generate for every row of --prompts (all shards, all teacher tags) before joining"
         )
-    rows, dropped = [], {"truncated": 0, "malformed": 0}
+    unknown = set(tags or ()) - {p.get("teacher_tag") for p in prompts}
+    if unknown:
+        raise SystemExit(f"error: no prompt has the teacher tag {', '.join(sorted(unknown))}")
+    rows, tokens, dropped = [], [], {"truncated": 0, "malformed": 0}
     for i, p in enumerate(prompts):
+        if tags and p.get("teacher_tag") not in tags:
+            continue
         g = gens[i]
+        tokens.append(g["n_tokens"])
         reason = "truncated" if g["truncated"] else "malformed" if g.get("malformed") else None
         if reason:
             dropped[reason] += 1
-        elif not tags or p.get("teacher_tag") in tags:
+        else:
             rows.append(jsonl.answered_row(p, g["text"].strip()))
-    tokens = sorted(g["n_tokens"] for g in gens.values())
+    tokens.sort()
     return rows, {
-        "prompts": len(prompts),
+        "prompts": len(tokens),
         "kept": len(rows),
         **dropped,
         "tokens_mean": round(sum(tokens) / len(tokens), 1),

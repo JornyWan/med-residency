@@ -196,8 +196,20 @@ def test_teacher_outputs_join():
     for i, tag in enumerate(("CT", "X-Ray", "CT", "MRI")):
         prompts[i]["teacher_tag"] = tag
     far, far_stats = teacher_outputs.join(prompts, gens, tags=["CT", "MRI"])
-    assert [r["messages"][1]["content"] for r in far] == ["answer 0", "answer 3"] and far_stats["kept"] == 2
-    assert teacher_outputs.join(prompts, gens, tags=["X-Ray"])[0] == []  # its only output is truncated
+    assert [r["messages"][1]["content"] for r in far] == ["answer 0", "answer 3"]
+    assert far_stats == {  # the counts are those of the three prompts of these teachers
+        "prompts": 3,
+        "kept": 2,
+        "truncated": 0,
+        "malformed": 1,
+        "tokens_mean": 26.7,
+        "tokens_p50": 30,
+        "tokens_p90": 40,
+    }
+    none, none_stats = teacher_outputs.join(prompts, gens, tags=["X-Ray"])
+    assert none == [] and none_stats["truncated"] == 1  # its only output is truncated
+    with pytest.raises(SystemExit, match="no prompt has the teacher tag Xray"):
+        teacher_outputs.join(prompts, gens, tags=["CT", "Xray"])
     with pytest.raises(SystemExit, match="3 of 4"):
         teacher_outputs.join(prompts, gens[:3])
     with pytest.raises(SystemExit, match="two generations"):

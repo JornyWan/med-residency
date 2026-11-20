@@ -158,8 +158,9 @@ medres data teacher-outputs --prompts data/modality_experts/train.jsonl --genera
     --tags CT MRI US --out data/modality_experts/train_teacher_far.jsonl
 ```
 
-The last command keeps the outputs of three teachers only. AdaOPD's SFT term reads the teachers that are far from
-the student, and `medres probe gap` ([evaluation.md](evaluation.md#the-gap-probe)) says which ones those are.
+The last command keeps the outputs of three teachers only, and the counts it prints are those of their prompts.
+AdaOPD's SFT term reads the teachers that are far from the student, and `medres probe gap`
+([evaluation.md](evaluation.md#the-gap-probe)) says which ones those are.
 
 The join refuses to write a file unless there is exactly one generation for every prompt, so a missing shard or a
 missing teacher cannot go unnoticed.
