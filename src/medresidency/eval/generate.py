@@ -22,9 +22,11 @@ Prints counts only: the responses to credentialed data (MIMIC-CXR) are credentia
 from __future__ import annotations
 
 import argparse
+import os
 import re
 
 from medresidency import config, jsonl
+from medresidency.launch import ENV_DEFAULTS
 
 CHUNK = 2000  # prompts whose images are held in memory at a time
 OPTIONS = {
@@ -153,6 +155,8 @@ def main():
     files = [(select(jsonl.read(data), a.tag, a.shard, a.limit), out) for data, out in zip(a.data, a.out)]
     if not all(rows for rows, _ in files):
         p.error("no rows selected from one of the --data files")
+    for name, value in ENV_DEFAULTS.items():  # vLLM is configured as in training, unless the caller decided
+        os.environ.setdefault(name, value)
     from transformers import AutoProcessor
     from vllm import LLM
 
