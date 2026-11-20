@@ -1,9 +1,13 @@
-# Nothing that is produced by a run belongs in this repository: no data, no model weights, no per-sample outputs, no logs.
+# Nothing that a run reads or produces belongs in this repository: no data, no model weights, no per-sample
+# outputs, no logs.
 /data/
 /models/
 /runs/
 /evals/
 /logs/
+/raw/
+/gen/
+/probes/
 *.jsonl
 *.safetensors
 *.bin
@@ -26,3 +30,6 @@ dist/
 .env
 .vscode/
 .idea/
+
+# private patterns for scripts/check_release.py
+.release_blocklist

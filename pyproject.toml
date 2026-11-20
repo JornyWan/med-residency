@@ -21,7 +21,8 @@ classifiers = [
 dependencies = ["pyyaml>=6", "numpy>=1.24"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "pillow"]  # pillow: the test of a data builder writes images
+# ruff is pinned because its formatting changes between versions; pillow: the test of a data builder writes images
+dev = ["pytest>=8", "ruff==0.17.6", "pillow"]
 
 [project.scripts]
 medres = "medresidency.cli:main"
