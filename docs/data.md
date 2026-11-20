@@ -211,6 +211,32 @@ Two properties of these files are worth knowing:
 To use your own data, write files in these formats and name them in a task file
 ([extending.md](extending.md#a-task)). No builder is needed.
 
+## Check against the benchmark's files
+
+The benchmark was produced before the builders had their present form. To make sure they still write the same
+data, we rebuilt every task from the sources and compared the result with the files the recorded runs read.
+Rows were compared one by one in file order, leaving out the directory of the image paths, and images by their
+bytes.
+
+| Task | Compared | Result |
+|:--|:--|:--|
+| `med_vqa` | training, validation and three test files (23,717 rows), 23,429 images | identical |
+| `cxr_report` | training prompts and labels, validation and two test files (43,437 rows), 23,437 images | identical |
+| `cxr_report_vqa` | the mixture, prompts and teacher outputs (20,000 rows each) | identical |
+| `modality_experts` | training and test file (88,995 rows) | identical |
+| `modality_experts` | 82,059 images | 80,980 identical, 1,079 differ slightly |
+| teacher outputs | the join, run on the recorded generations of `cxr_report` and `med_vqa` | same rows |
+
+Two differences are known and harmless:
+
+- **Pillow version.** The benchmark's copies of the OmniMedVQA images were resized with an older Pillow. Pillow
+  13.0.0, which `requirements-train.txt` pins, resamples 1,079 of them slightly differently: part of their
+  pixels change, mostly by one gray level. Pillow 12.2.0 reproduces all of them exactly. The images of the other
+  tasks come out the same with 13.0.0.
+- **Order of the teacher outputs.** `medres data teacher-outputs` writes the rows in the order of the prompts. The
+  recorded `med_vqa` file holds the same 19,221 rows in the order of the generation shards. ms-swift shuffles the
+  file when it loads it, so a run sees the same rows in another sequence.
+
 ## References
 
 - MIMIC-CXR: Johnson et al., "MIMIC-CXR, a de-identified publicly available database of chest radiographs with

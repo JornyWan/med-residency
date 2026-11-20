@@ -9,8 +9,10 @@ mean ± standard deviation over three seeds (42, 2, 3) at the final checkpoint, 
 > **Where the numbers come from.** The tables were produced for the AdaOPD paper with the research code that
 > MedResidency was refactored from. They have not been re-run with this package. What we did check: for 47 of the
 > recorded runs we compared the training arguments MedResidency builds with the arguments that were recorded at the
-> time. 39 are identical; 8 differ only in options that do not enter the loss (`save_steps`, `save_only_model`,
-> `remove_unused_columns`). If you reproduce a row, please [send us the result](#contributing-results).
+> time. 40 are identical; 7 differ only in how checkpoints are saved (`save_steps`, `save_only_model`). We also
+> rebuilt the task files with `medres data` and compared them with the files the recorded runs read
+> ([data.md](../docs/data.md#check-against-the-benchmarks-files)). If you reproduce a row, please
+> [send us the result](#contributing-results).
 
 ## Contents
 

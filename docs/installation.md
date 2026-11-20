@@ -49,6 +49,7 @@ versions the benchmark was produced with:
 | datasets | 4.8.4 |
 | deepspeed | 0.19.8 |
 | qwen-vl-utils | 0.0.14 |
+| Pillow | 13.0.0 |
 
 ms-swift 4.6.0 itself accepts newer releases of `transformers` and `trl` than these. They have not been tried.
 
@@ -73,10 +74,12 @@ bash scripts/install_metrics_env.sh /path/to/envs/medres_metrics
 export MEDRES_METRICS_PYTHON=/path/to/envs/medres_metrics/bin/python
 ```
 
-This installs RadEval 2.2.1, which provides RadCliQ-v1, RadGraph-F1, CheXbert, RaTEScore and GREEN, and fixes two
-problems of that release (an import that fails on case-sensitive file systems, and a CheXbert line that fails with
-scikit-learn 1.8 or newer). Put the `export` line into your shell profile or job script: `medres eval run` and
-`medres eval report-score` on report tasks, and `--method grpo` with a report reward, read it.
+This installs the packages of `requirements-metrics.txt`: RadEval 2.2.1, which provides RadCliQ-v1, RadGraph-F1,
+CheXbert, RaTEScore and GREEN, with the versions of torch, transformers, scikit-learn, stanza, spaCy and NLTK the
+benchmark was scored with. The script then fixes two problems of that RadEval release (an import that fails on
+case-sensitive file systems, and a CheXbert line that fails with scikit-learn 1.8 or newer). Put the `export` line
+into your shell profile or job script: `medres eval run` and `medres eval report-score` on report tasks, and
+`--method grpo` with a report reward, read it.
 
 The metric models are downloaded to the Hugging Face cache on first use. GREEN uses a 7B judge
 (`bash scripts/download_models.sh green`). The VQA tasks need none of this.

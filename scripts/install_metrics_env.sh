@@ -8,7 +8,7 @@
 # report-score`, `medres eval run` (report tasks) and the report reward of GRPO start their scoring process with
 # $MEDRES_METRICS_PYTHON; src/medresidency/eval/report_score.py imports nothing from the training environment.
 #
-# Two patches to the installed RadEval 2.2.1 (both idempotent):
+# The versions are pinned in requirements-metrics.txt. Two patches to the installed RadEval 2.2.1 (both idempotent):
 #   1. the package directory is installed as `radeval`, some of its modules import `RadEval.` (fails on Linux);
 #   2. with scikit-learn >= 1.8 the CheXbert accuracy line fails (sklearn's sparse count_nonzero gets a dense matrix).
 #
@@ -17,11 +17,12 @@
 # STANZA_RESOURCES_DIR, NLTK_DATA and HF_DATASETS_CACHE.
 set -euo pipefail
 
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV="${1:?usage: install_metrics_env.sh <environment directory>}"
 conda create -y -p "$ENV" python=3.12
 PY="$ENV/bin/python"
 "$PY" -m pip install -U pip
-"$PY" -m pip install "RadEval==2.2.1"
+"$PY" -m pip install -r "$REPO/requirements-metrics.txt"
 
 P="$("$PY" -c 'import os, importlib.util as u; print(os.path.dirname(u.find_spec("radeval").origin))')"
 { grep -rl -E "(from|import) RadEval\." "$P" --include=*.py || true; } |

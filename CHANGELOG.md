@@ -26,8 +26,8 @@ First version.
 - `medres probe gap`: the language gap and the visual evidence of a teacher–student pair before training.
 - `medres stats compare`: paired bootstrap comparison of two runs, with resampling by patient.
 - The benchmark page with the results of the AdaOPD paper and the command behind every row.
-- Install scripts for the training environment (versions pinned in `requirements-train.txt`) and the metrics
-  environment, a download script, and SLURM templates.
+- Install scripts for the training and the metrics environment (versions pinned in `requirements-train.txt` and
+  `requirements-metrics.txt`), a download script, and SLURM templates.
 
 ### Protocol
 

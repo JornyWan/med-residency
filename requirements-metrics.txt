@@ -1,0 +1,9 @@
+# The metrics environment. scripts/install_metrics_env.sh installs this file.
+# These are the versions the report metrics in benchmarks/README.md were computed with.
+RadEval==2.2.1
+torch==2.15.0
+transformers==5.21.0
+scikit-learn==1.9.1
+stanza==1.15.0
+spacy==3.8.18
+nltk==3.10.4

@@ -10,3 +10,5 @@ accelerate==1.15.0
 datasets==4.8.4
 deepspeed==0.19.8
 qwen-vl-utils==0.0.14
+# The data builders resize images with Pillow, and its resampling changed between 12 and 13 (docs/data.md).
+pillow==13.0.0
