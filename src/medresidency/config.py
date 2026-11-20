@@ -18,7 +18,8 @@ from pathlib import Path
 import yaml
 
 FIXED = ("run", "student", "data", "train", "teacher_server", "hardware")  # their keys are those of defaults.yaml
-TOP = FIXED + ("teachers", "method", "models", "task", "eval")
+TOP = FIXED + ("teachers", "method", "models", "task")
+TASK_ONLY = ("eval", "generation")  # blocks of a task file read by the evaluation tools (`task`, `test_sets`), not by a run
 _SCI = re.compile(r"[+-]?\d+(\.\d*)?[eE][+-]?\d+")  # "1e-6": a string for YAML 1.1, a number for everybody else
 
 
@@ -46,6 +47,31 @@ def available(kind: str) -> list[str]:
 def describe(kind: str, name: str, full: bool = False) -> str:
     text = _read(config_dir() / kind / f"{name}.yaml").get("description", "")
     return text if full else text.split(". ")[0].rstrip(".")
+
+
+def task(name: str) -> dict:
+    """the YAML of a task, for the tools that need its `eval` and `generation` blocks"""
+    if name not in available("tasks"):
+        raise ConfigError(f"unknown task {name!r}; available: {', '.join(available('tasks'))}")
+    return _read(config_dir() / "tasks" / f"{name}.yaml")
+
+
+def test_sets(name: str) -> list[dict]:
+    """the test sets of a task: name, file, and the generation settings of the task the set belongs to. A task lists
+    its own sets under `eval.test` and borrows sets of other tasks with `eval.test_from: {task: [set, ...]}`."""
+    t = task(name)
+    ev = t.get("eval") or {}
+    profile = (t.get("generation") or {}).get("eval")
+    if ev.get("test") and not profile:
+        raise ConfigError(f"task {name}: the test sets under `eval.test` need the settings `generation.eval`")
+    sets = [{"name": k, "file": data_path(v), "generation": profile} for k, v in (ev.get("test") or {}).items()]
+    for other, names in (ev.get("test_from") or {}).items():
+        theirs = {s["name"]: s for s in test_sets(other)}
+        missing = [n for n in names if n not in theirs]
+        if missing:
+            raise ConfigError(f"task {name}: task {other} has no test set {', '.join(missing)}")
+        sets += [theirs[n] for n in names]
+    return sets
 
 
 def _merge(base: dict, new: dict) -> dict:
@@ -92,6 +118,8 @@ def load(task: str | None = None, method: str | None = None, recipe: str | None 
     defaults = _read(d / "defaults.yaml")
     t, m = _read(d / "tasks" / f"{task}.yaml"), _read(d / "methods" / f"{method}.yaml")
     task_overrides = t.pop("overrides", None) or {}
+    for k in TASK_ONLY:
+        t.pop(k, None)
     cfg = copy.deepcopy(defaults)
     for layer in (t, m, task_overrides.get(method) or {}, rec):
         _merge(cfg, {k: v for k, v in layer.items() if k not in ("description", "task")})

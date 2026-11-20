@@ -14,5 +14,8 @@ eval:
   validation: cxr_report/val.jsonl
   test: {mimic_cxr: cxr_report/test_mimic.jsonl, iu_xray: cxr_report/test_iu.jsonl}
   metrics: [1/RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert-5, CheXbert-14, GREEN, truncated]
+generation:   # settings of `medres eval generate --task cxr_report [--profile teacher_outputs]`; greedy unless stated
+  eval: {max_tokens: 1024, max_model_len: 2048, max_num_seqs: 128}
+  teacher_outputs: {max_tokens: 1024, max_model_len: 2048, max_num_seqs: 128}
 overrides:
   grpo: {method: {reward: report_radcliq}}

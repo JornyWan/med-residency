@@ -24,24 +24,24 @@ from medresidency import __version__, config, launch, methods
 # executed with $MEDRES_METRICS_PYTHON, because the metric packages cannot be installed next to ms-swift.
 TOOLS = {
     "data": {
-        "cxr-report": ("data.cxr_report", False, "MIMIC-CXR -> prompts and reference reports for training and validation"),
-        "cxr-test": ("data.cxr_test", False, "ReXrank test sets (MIMIC-CXR, IU X-ray) -> evaluation files"),
+        "cxr-report": ("data.cxr_report", False, "MIMIC-CXR -> report prompts, reference reports, validation and test files"),
+        "cxr-iu": ("data.cxr_iu", False, "IU X-ray (ReXrank test split) -> external report test file"),
         "med-vqa": ("data.med_vqa", False, "PMC-VQA / MedXpertQA / MMMU -> reasoning-VQA prompts and test files"),
         "mixed": ("data.mixed", False, "mix report and VQA rows, each tagged with its teacher"),
         "modality-experts": ("data.modality_experts", False, "OmniMedVQA -> prompts tagged with the expert of their modality"),
-        "teacher-outputs": ("data.teacher_outputs", False, "responses of a teacher to the training prompts (offline KD, replay)"),
+        "teacher-outputs": ("data.teacher_outputs", False, "generations of a teacher + prompts -> supervised file (offline KD, replay)"),
     },
     "eval": {
-        "generate": ("eval.generate", False, "greedy responses of a checkpoint on an evaluation file"),
+        "run": ("eval.run", False, "generate and score on every test set of a task"),
+        "generate": ("eval.generate", False, "responses of a model to the prompts of a file (test sets, teacher outputs)"),
         "vqa": ("eval.vqa", False, "accuracy of generated answers"),
-        "report-score": ("eval.report_score", True, "RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert, BERTScore, BLEU"),
-        "report-green": ("eval.report_green", True, "GREEN with a length cap"),
+        "report-score": ("eval.report_score", True, "RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert, BERTScore, BLEU, GREEN"),
     },
     "probe": {
         "gap": ("probe.gap", False, "language gap and visual evidence of a teacher-student pair before training"),
     },
     "stats": {
-        "compare": ("stats", False, "paired bootstrap between two sets of per-item scores"),
+        "compare": ("stats", False, "paired bootstrap between two models on the same test set"),
     },
 }
 

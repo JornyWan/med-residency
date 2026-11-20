@@ -12,5 +12,8 @@ train:
 eval:
   test: {pmc_vqa: med_vqa/test_pmc_vqa.jsonl, medxpertqa_mm: med_vqa/test_medxpertqa_mm.jsonl, mmmu_health: med_vqa/test_mmmu_health.jsonl}
   metrics: [accuracy, truncated]
+generation:   # settings of `medres eval generate --task med_vqa [--profile teacher_outputs]`; greedy unless stated
+  eval: {max_tokens: 4096, max_model_len: 6144}
+  teacher_outputs: {max_tokens: 2048, max_model_len: 4096}
 overrides:
   grpo: {method: {reward: mcq_accuracy}}

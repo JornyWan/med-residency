@@ -28,8 +28,18 @@ teacher_server:
   gpu_memory: 0.13
   max_batched_tokens: 1024
 eval:
-  test: {omnimedvqa: modality_experts/test}
+  test: {omnimedvqa: modality_experts/test.jsonl}
   metrics: [accuracy per modality, micro and macro accuracy]
+generation:   # settings of `medres eval generate --task modality_experts [--profile teacher_outputs]`
+  eval: {max_tokens: 256, max_model_len: 4096}   # greedy
+  # One sample of each expert at temperature 1; a sample that is not in Med-R1's format is drawn again (up to four
+  # times), and `medres data teacher-outputs` drops the rows that are still malformed.
+  teacher_outputs:
+    max_tokens: 512
+    max_model_len: 4096
+    temperature: 1.0
+    retries: 4
+    well_formed: '<think>.*?</think>\s*<answer>.*?</answer>'
 overrides:
   adaopd: {method: {measure_tags: [CT, MRI, US]}}
   two_stage: {method: {sft_steps: 200}}   # 200 + 300 steps, both ending on a checkpoint

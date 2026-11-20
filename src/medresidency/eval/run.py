@@ -1,0 +1,119 @@
+"""Evaluate a model or checkpoint on the test sets of a task: generate, score, summarize.
+
+    medres eval run --task cxr_report --model runs/cxr_report_adaopd_s42/checkpoint-300 [--green]
+
+1. `medres eval generate` on every test set, with the generation settings of the task (configs/tasks/<task>.yaml).
+   Generation runs in a process of its own, so that the GPU is free again for the metrics; test sets with the same
+   settings share one process. An output file that exists is kept.
+2. `medres eval report-score` for report test sets (in the metrics environment: set MEDRES_METRICS_PYTHON) and
+   `medres eval vqa` for VQA test sets.
+3. <out>/summary.json: the corpus-level numbers of every test set.
+
+Output directory: evals/<run>/<checkpoint> (the last two parts of --model) unless --out is given. Every step is a
+tool of its own (`medres eval --help`), for shards over several GPUs or several checkpoints in one scoring pass.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from medresidency import config, jsonl
+from medresidency.eval import vqa
+
+# summary key -> column, scale: the numbers printed for a report test set (the summary file has all of them)
+REPORT_COLUMNS = (("fi_inv_radcliq", "1/RadCliQ-v1", 1), ("fi_radgraph", "RadGraph-F1", 100), ("fi_ratescore", "RaTEScore", 100),
+                  ("fi_f1chexbert_5_micro_f1", "CheXbert-5", 100), ("fi_f1chexbert_all_micro_f1", "CheXbert-14", 100),
+                  ("fi_green", "GREEN", 100), ("truncated", "truncated %", 100))
+
+
+def kind(test_file: str) -> str:
+    """`report` (rows with a reference report) or `vqa` (rows with an answer)"""
+    with open(test_file) as f:
+        return "report" if "reference" in json.loads(f.readline()) else "vqa"
+
+
+def generate_commands(sets: list[dict], model: str, extra: list[str]) -> list[list[str]]:
+    """one `medres eval generate` command per group of test sets with the same generation settings"""
+    groups = {}
+    for s in sets:
+        groups.setdefault(json.dumps(s["generation"], sort_keys=True), []).append(s)
+    commands = []
+    for key, group in groups.items():
+        cmd = [sys.executable, "-m", "medresidency", "eval", "generate", "--model", model,
+               "--data", *[s["file"] for s in group], "--out", *[s["out"] for s in group], *extra]
+        for k, v in json.loads(key).items():
+            cmd += [f"--{k.replace('_', '-')}", str(v)]
+        commands.append(cmd)
+    return commands
+
+
+def headline(kind_: str, summary: dict) -> str:
+    if kind_ == "vqa":
+        return f"accuracy {summary['micro_acc']:.2f} (macro {summary['macro_acc']:.2f}), n={summary['n']}"
+    return ", ".join(f"{name} {scale * summary[k]:.{3 if scale == 1 else 1}f}" for k, name, scale in REPORT_COLUMNS
+                     if k in summary) + f", n={summary['n_fi']}"
+
+
+def main():
+    p = argparse.ArgumentParser(prog="medres eval run", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--task", required=True, help="see `medres list tasks`")
+    p.add_argument("--model", required=True, help="model or checkpoint directory")
+    p.add_argument("--out", help="output directory (default: evals/<run>/<checkpoint>)")
+    p.add_argument("--sets", nargs="+", help="only these test sets of the task")
+    p.add_argument("--green", action="store_true", help="also GREEN for report test sets (a 7B judge)")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--tp", type=int, default=1, help="tensor-parallel size: GPUs of a model too large for one")
+    p.add_argument("--gpu-memory", type=float, default=0.85)
+    a = p.parse_args()
+    try:
+        sets = config.test_sets(a.task)
+    except config.ConfigError as e:
+        p.error(str(e))
+    unknown = set(a.sets or ()) - {s["name"] for s in sets}
+    if unknown:
+        p.error(f"task {a.task} has no test set {', '.join(sorted(unknown))}; it has {', '.join(s['name'] for s in sets)}")
+    sets = [s for s in sets if not a.sets or s["name"] in a.sets]
+    missing = [s["file"] for s in sets if not os.path.isfile(s["file"])]
+    if missing:
+        p.error(f"test files not found: {', '.join(missing)} (build them with `medres data`, see docs/data.md)")
+    model = Path(a.model).resolve()
+    out = Path(a.out) if a.out else Path("evals") / model.parent.name / model.name
+    for s in sets:
+        s["kind"], s["out"] = kind(s["file"]), str(out / f"{s['name']}.jsonl")
+    metrics_python = os.environ.get("MEDRES_METRICS_PYTHON")
+    if not metrics_python and any(s["kind"] == "report" for s in sets):
+        p.error("report test sets are scored in the metrics environment: set MEDRES_METRICS_PYTHON "
+                "(scripts/install_metrics_env.sh)")
+
+    todo = [s for s in sets if not os.path.exists(s["out"])]
+    for s in sets:
+        if s not in todo:
+            print(f"{s['out']} exists: kept", flush=True)
+    extra = ["--seed", str(a.seed), "--tp", str(a.tp), "--gpu-memory", str(a.gpu_memory)]
+    for cmd in generate_commands(todo, a.model, extra):
+        subprocess.run(cmd, check=True)
+
+    summary = {}
+    for s in sets:
+        if s["kind"] == "vqa":
+            summary[s["name"]] = vqa.score_file(jsonl.read(s["file"]), s["out"])
+        else:
+            subprocess.run([metrics_python, "-I", str(Path(__file__).parent / "report_score.py"), "--data", s["file"],
+                            "--generations", s["out"], *(["--green"] if a.green else [])], check=True, stdout=subprocess.DEVNULL)
+            with open(s["out"].removesuffix(".jsonl") + ".summary.json") as f:
+                summary[s["name"]] = json.load(f)
+    with open(out / "summary.json", "w") as f:
+        json.dump(summary, f, indent=1)
+    print(f"\n{a.model} on {a.task}")
+    for s in sets:
+        print(f"  {s['name']:<16}{headline(s['kind'], summary[s['name']])}")
+    print(f"-> {out / 'summary.json'}")
+
+
+if __name__ == "__main__":
+    main()
