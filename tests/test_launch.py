@@ -59,9 +59,11 @@ def test_teacher_command():
 
 def test_last_checkpoint(tmp_path):
     assert launch.last_checkpoint(tmp_path / "missing") == 0
-    for name in ("checkpoint-50", "checkpoint-100", "checkpoint-last", "medres"):
+    for name in ("checkpoint-50", "checkpoint-100", "medres"):
         (tmp_path / name).mkdir()
-    assert launch.last_checkpoint(tmp_path) == 100
+    assert launch.last_checkpoint(tmp_path) == 0  # no link yet: no checkpoint is known to be complete
+    (tmp_path / "last-checkpoint").symlink_to("checkpoint-50")  # a cancelled job left checkpoint-100 half-written
+    assert launch.last_checkpoint(tmp_path) == 50
 
 
 def test_only_the_newest_checkpoint_keeps_its_optimizer_state(tmp_path):
@@ -70,13 +72,12 @@ def test_only_the_newest_checkpoint_keeps_its_optimizer_state(tmp_path):
         state.mkdir(parents=True)
         (state / "optim_states.pt").touch()
         (state.parent / "model.safetensors").touch()
-    launch.drop_stale_optimizer_states(tmp_path)  # no link yet: no checkpoint is known to be complete
+    launch.drop_stale_optimizer_states(tmp_path)  # no complete checkpoint yet
     assert len(list(tmp_path.glob("checkpoint-*/global_step*"))) == 3
     (tmp_path / "last-checkpoint").symlink_to("checkpoint-100")  # checkpoint-150 is still being written
     launch.drop_stale_optimizer_states(tmp_path)
     assert sorted(p.name for p in tmp_path.glob("checkpoint-*/global_step*")) == ["global_step100", "global_step150"]
     assert len(list(tmp_path.glob("checkpoint-*/model.safetensors"))) == 3  # the weights stay
-    assert launch.last_checkpoint(tmp_path) == 150
 
 
 def test_launch_record_on_a_node_without_git(monkeypatch):
@@ -178,7 +179,9 @@ def test_cli_list_and_errors(capsys):
 
 def test_refuses_to_overwrite_a_finished_run(tmp_path):
     cfg = config.load("cxr_report", "opd", overrides=[f"run.output_root={tmp_path}"])
-    (tmp_path / "cxr_report_opd_s42" / "checkpoint-300").mkdir(parents=True)
+    run_dir = tmp_path / "cxr_report_opd_s42"
+    (run_dir / "checkpoint-300").mkdir(parents=True)
+    (run_dir / "last-checkpoint").symlink_to("checkpoint-300")
     with pytest.raises(launch.LaunchError, match="already holds checkpoint-300"):
         launch.run(cfg)
     cfg["run"]["resume"] = True

@@ -152,6 +152,10 @@ medres train --task cxr_report --method adaopd --seed 42 run.resume=true
 Stages that already have their final checkpoint are skipped. AdaOPD restores its controller from `logging.jsonl`,
 so the resumed run continues with the smoothed gap and the first-step gap of the original run.
 
+The last checkpoint is the one that the link `runs/<run>/last-checkpoint` points to. ms-swift moves the link when a
+checkpoint is written completely, so a checkpoint that a cancelled job left half-written does not count and is
+written again. Keep the link when you copy a run directory.
+
 The optimizer state is the large part of a checkpoint: about 24 GB for a 2B student, next to 5 GB of weights. A
 resume needs only the newest one, so the launcher deletes the state of a checkpoint once a newer checkpoint is
 complete; the weights of every checkpoint stay. A 300-step run then takes up to 80 GB while it trains and about

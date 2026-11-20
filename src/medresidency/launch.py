@@ -145,20 +145,21 @@ def free_port() -> int:
 
 
 def last_checkpoint(output_dir) -> int:
-    steps = [p.name.split("-", 1)[1] for p in Path(output_dir).glob("checkpoint-*")]
-    return max((int(s) for s in steps if s.isdigit()), default=0)
+    """Step of the newest complete checkpoint of a stage, 0 if it has none.
+
+    ms-swift points the `last-checkpoint` link at a checkpoint once all of its files are written, so a checkpoint
+    that a cancelled job left half-written does not count.
+    """
+    link = Path(output_dir) / "last-checkpoint"
+    return int(os.readlink(link).rsplit("-", 1)[1]) if link.is_symlink() else 0
 
 
 def drop_stale_optimizer_states(output_dir) -> None:
     """Delete the optimizer state of every checkpoint older than the newest complete one.
 
     A resume starts from the newest checkpoint, and an optimizer state is several times the size of the weights.
-    ms-swift moves the `last-checkpoint` link once a checkpoint is written completely.
     """
-    link = Path(output_dir) / "last-checkpoint"
-    if not link.is_symlink():
-        return
-    newest = int(os.readlink(link).rsplit("-", 1)[1])
+    newest = last_checkpoint(output_dir)
     for state in Path(output_dir).glob("checkpoint-*/global_step*"):  # the directory DeepSpeed writes
         if int(state.parent.name.rsplit("-", 1)[1]) < newest:
             shutil.rmtree(state, ignore_errors=True)

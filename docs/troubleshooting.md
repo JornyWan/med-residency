@@ -92,6 +92,12 @@ Lower `train.per_device_batch`; the launcher raises the gradient accumulation, s
 rollout engine holds `train.rollout_gpu_memory` of each student card (0.3 by default). The 2B students of the
 benchmark trained on 48 GB cards, the 4B student on 80 GB cards.
 
+**The disk is full while a checkpoint is written**
+
+A checkpoint of a 2B student takes 29 GB, and a run needs room for two of them next to the weights of its earlier
+checkpoints ([concepts.md](concepts.md#resuming)). Free the space and submit the same command again with
+`run.resume=true`: the run continues from the last checkpoint that was written completely.
+
 **All responses reach the response limit** (`completions/clipped_ratio` close to 1 in `logging.jsonl`)
 
 This is not a software failure. The student has collapsed into repetition, which is what plain OPD does when student
