@@ -14,8 +14,10 @@ Reported per decoding mode, as means over the *fresh* tokens: `gap`, `visual_evi
 stopped (its p(EOS) > 0.5); repeat = a token that completes a 4-gram already in the response; fresh = the rest.
 `gap_trainer` is the quantity the AdaOPD trainer logs as `lang_gap` at its first step: the same mean over every
 token that is not a repeat. A gap above tau (1 nat by default) means the student's samples are far from text the
-teacher would write, the regime where pure on-policy distillation collapsed into repetition in our experiments;
-AdaOPD then starts by imitating teacher outputs (mu > 0).
+teacher would write; AdaOPD then starts by imitating teacher outputs (mu > 0). The probe measures the starting point
+only: in the benchmark, pure on-policy distillation collapsed into repetition with the teacher whose gap stayed above
+tau during training, not with teachers whose large initial gap closed within 100 steps (`lang_gap` in the training
+log shows which case a run is in; `--method opd method.monitor_gap=true` logs it without changing the training).
 
     medres probe gap --data data/cxr_report/train.jsonl --student models/Qwen3-VL-2B-Instruct \\
         --teacher models/UniRG-CXR --out probes/unirg_qwen3vl2b

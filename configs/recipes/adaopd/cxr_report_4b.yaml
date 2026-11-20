@@ -1,4 +1,4 @@
-# Report generation with the 4B student (supplementary Table S8). Names no method: add --method.
+# Report generation with the 4B student (benchmarks/README.md, "A larger student"). Names no method: add --method.
 #   medres train configs/recipes/adaopd/cxr_report_4b.yaml --method gkd --seed 42
 # The paper's runs used four 80 GB GPUs for this student.
 task: cxr_report

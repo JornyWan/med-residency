@@ -1,6 +1,7 @@
 """Evaluate a model or checkpoint on the test sets of a task: generate, score, summarize.
 
     medres eval run --task cxr_report --model runs/cxr_report_adaopd_s42/checkpoint-300 [--green]
+    medres eval run --task cxr_report --model runs/cxr_report_adaopd_s42/checkpoint-300 --split validation
 
 1. `medres eval generate` on every test set, with the generation settings of the task (configs/tasks/<task>.yaml).
    Generation runs in a process of its own, so that the GPU is free again for the metrics; test sets with the same
@@ -65,13 +66,15 @@ def main():
     p.add_argument("--model", required=True, help="model or checkpoint directory")
     p.add_argument("--out", help="output directory (default: evals/<run>/<checkpoint>)")
     p.add_argument("--sets", nargs="+", help="only these test sets of the task")
+    p.add_argument("--split", choices=("test", "validation"), default="test",
+                   help="validation: the task's validation set instead of its test sets (hyper-parameter selection)")
     p.add_argument("--green", action="store_true", help="also GREEN for report test sets (a 7B judge)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--tp", type=int, default=1, help="tensor-parallel size: GPUs of a model too large for one")
     p.add_argument("--gpu-memory", type=float, default=0.85)
     a = p.parse_args()
     try:
-        sets = config.test_sets(a.task)
+        sets = config.test_sets(a.task, a.split)
     except config.ConfigError as e:
         p.error(str(e))
     unknown = set(a.sets or ()) - {s["name"] for s in sets}

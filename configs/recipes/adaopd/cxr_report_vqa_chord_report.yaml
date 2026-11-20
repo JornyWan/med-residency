@@ -1,4 +1,4 @@
-# Two teachers, "CHORD (report)" (Table 2): the SFT term replays the report teacher's outputs only, as AdaOPD does.
+# Two teachers, "CHORD (report)" in benchmarks/README.md: the SFT term replays the report teacher's outputs only, as AdaOPD does.
 # The task's default CHORD replays both teachers' outputs ("CHORD (both)").
 task: cxr_report_vqa
 method: {name: chord}

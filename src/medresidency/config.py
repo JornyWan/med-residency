@@ -56,12 +56,17 @@ def task(name: str) -> dict:
     return _read(config_dir() / "tasks" / f"{name}.yaml")
 
 
-def test_sets(name: str) -> list[dict]:
+def test_sets(name: str, split: str = "test") -> list[dict]:
     """the test sets of a task: name, file, and the generation settings of the task the set belongs to. A task lists
-    its own sets under `eval.test` and borrows sets of other tasks with `eval.test_from: {task: [set, ...]}`."""
+    its own sets under `eval.test` and borrows sets of other tasks with `eval.test_from: {task: [set, ...]}`.
+    split="validation": the one set under `eval.validation`, the set to select hyper-parameters on."""
     t = task(name)
     ev = t.get("eval") or {}
     profile = (t.get("generation") or {}).get("eval")
+    if split == "validation":
+        if not ev.get("validation"):
+            raise ConfigError(f"task {name} has no validation set (`eval.validation` in its task file)")
+        return [{"name": "validation", "file": data_path(ev["validation"]), "generation": profile}]
     if ev.get("test") and not profile:
         raise ConfigError(f"task {name}: the test sets under `eval.test` need the settings `generation.eval`")
     sets = [{"name": k, "file": data_path(v), "generation": profile} for k, v in (ev.get("test") or {}).items()]

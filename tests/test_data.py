@@ -71,6 +71,13 @@ def test_med_vqa_prompts():
          "domain": "pmc_vqa", "answer": "B", "parser": "letter"}]
 
 
+def test_med_vqa_held_out():
+    rows = [{"Figure_path": f, "q": i} for i, f in enumerate(["a", "b", "a", "c", "c", "b", "d", "e"])]
+    assert [r["q"] for r in med_vqa.held_out(rows, 2, 10)] == [3, 6, 7]  # not a/b (training), c once
+    assert [r["q"] for r in med_vqa.held_out(rows, 2, 2)] == [3, 6]
+    assert med_vqa.held_out(rows, 8, 5) == []
+
+
 def test_med_vqa_builder(tmp_path, monkeypatch):
     image = pytest.importorskip("PIL.Image")
     src, out = tmp_path / "pmc", tmp_path / "out"
@@ -91,6 +98,9 @@ def test_med_vqa_builder(tmp_path, monkeypatch):
     assert (train[0]["teacher_tag"], train[0]["solution"]) == ("medix", "<answer>B</answer>")
     assert image.open(train[0]["images"][0]).size == (896, 448)  # longer side 896
     assert len(test) == 1 and (test[0]["id"], test[0]["answer"], test[0]["parser"]) == ("pmc_vqa/0", "B", "letter")
+    val = jsonl.read(out / "val.jsonl")  # the one question left, on a figure of its own
+    assert [(v["id"], v["domain"]) for v in val] == [("pmc_val/0", "pmc_val")]
+    assert val[0]["images"][0] not in {t["images"][0] for t in train}
     assert is_correct(test[0], "the figure shows b. <answer>B</answer>")
 
 

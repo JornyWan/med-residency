@@ -1,6 +1,7 @@
 """PMC-VQA, MedXpertQA and MMMU -> the files of the `med_vqa` task (multiple-choice questions answered with reasoning).
 
   train.jsonl                 --n-train questions of PMC-VQA train_2.csv: prompt, image, teacher_tag, solution
+  val.jsonl                   --n-val further questions of train_2.csv, on figures no training question uses
   test_pmc_vqa.jsonl          --n-test questions of PMC-VQA test_2.csv
   test_medxpertqa_mm.jsonl    MedXpertQA-MM test, the questions with a single image
   test_mmmu_health.jsonl      MMMU validation, the five health subjects, single-image multiple choice
@@ -64,12 +65,29 @@ class Images:
         return dst
 
 
-def pmc_items(root: str, file: str, n: int, seed: int, images: Images) -> list[dict]:
+def pmc_rows(root: str, file: str, seed: int) -> list[dict]:
+    """the questions of a PMC-VQA file in the (fixed) order they are drawn in"""
     with open(f"{root}/{file}") as f:
         rows = list(csv.DictReader(f))
     random.Random(seed).shuffle(rows)
+    return rows
+
+
+def held_out(rows: list[dict], n_train: int, n_val: int) -> list[dict]:
+    """validation questions: they follow the n_train training questions, no training question uses their figure, and
+    each figure gives one question"""
+    used = {r["Figure_path"] for r in rows[:n_train]}
+    val = []
+    for r in rows[n_train:]:
+        if len(val) < n_val and r["Figure_path"] not in used:
+            used.add(r["Figure_path"])
+            val.append(r)
+    return val
+
+
+def pmc_items(root: str, rows: list[dict], images: Images) -> list[dict]:
     return [dict(image=images.save(f"{root}/figures/{r['Figure_path']}", "pmc_" + os.path.splitext(r["Figure_path"])[0]),
-                 question=pmc_question(r), answer=r["Answer"].strip()) for r in rows[:n]]
+                 question=pmc_question(r), answer=r["Answer"].strip()) for r in rows]
 
 
 def medxpert_items(root: str, images: Images) -> list[dict]:
@@ -109,6 +127,7 @@ def main():
     p.add_argument("--mmmu", help="directory with <subject>/validation-*.parquet")
     p.add_argument("--out", default=config.data_path("med_vqa"))
     p.add_argument("--n-train", type=int, default=20000)
+    p.add_argument("--n-val", type=int, default=1000)
     p.add_argument("--n-test", type=int, default=1000)
     p.add_argument("--teacher-tag", default="medix", help="the routing tag of the task's teacher")
     a = p.parse_args()
@@ -116,11 +135,14 @@ def main():
         p.error("give at least one source")
     images = Images(a.out)
     if a.pmc_vqa:
-        train = pmc_items(a.pmc_vqa, "train_2.csv", a.n_train, 0, images)
+        pool = pmc_rows(a.pmc_vqa, "train_2.csv", 0)
+        train = pmc_items(a.pmc_vqa, pool[:a.n_train], images)
         rows = [jsonl.user_row(user_turn(x["question"]), x["image"], teacher_tag=a.teacher_tag,
                                solution=f"<answer>{x['answer']}</answer>") for x in train]
         print("train.jsonl", jsonl.write(f"{a.out}/train.jsonl", rows))
-        test = pmc_items(a.pmc_vqa, "test_2.csv", a.n_test, 1, images)
+        val = pmc_items(a.pmc_vqa, held_out(pool, a.n_train, a.n_val), images)
+        print("val.jsonl", jsonl.write(f"{a.out}/val.jsonl", test_rows("pmc_val", val)))
+        test = pmc_items(a.pmc_vqa, pmc_rows(a.pmc_vqa, "test_2.csv", 1)[:a.n_test], images)
         print("test_pmc_vqa.jsonl", jsonl.write(f"{a.out}/test_pmc_vqa.jsonl", test_rows("pmc_vqa", test)))
     if a.medxpertqa:
         rows = test_rows("medxpertqa_mm", medxpert_items(a.medxpertqa, images))

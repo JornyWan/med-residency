@@ -10,6 +10,7 @@ train:
   lr: 1.0e-6
   max_completion: 2048
 eval:
+  validation: med_vqa/val.jsonl
   test: {pmc_vqa: med_vqa/test_pmc_vqa.jsonl, medxpertqa_mm: med_vqa/test_medxpertqa_mm.jsonl, mmmu_health: med_vqa/test_mmmu_health.jsonl}
   metrics: [accuracy, truncated]
 generation:   # settings of `medres eval generate --task med_vqa [--profile teacher_outputs]`; greedy unless stated

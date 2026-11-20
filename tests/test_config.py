@@ -104,11 +104,16 @@ def test_test_sets():
     assert sets[0]["generation"] == {"max_tokens": 1024, "max_model_len": 2048, "max_num_seqs": 128}
     # the two-teacher task is tested on sets of its source tasks, each with the settings of the task it comes from
     mixed = {s["name"]: s for s in config.test_sets("cxr_report_vqa")}
-    assert list(mixed) == ["mimic_cxr", "iu_xray", "pmc_vqa"]
+    assert list(mixed) == ["mimic_cxr", "iu_xray", "pmc_vqa", "medxpertqa_mm", "mmmu_health"]
     assert (mixed["mimic_cxr"]["generation"]["max_tokens"], mixed["pmc_vqa"]["generation"]["max_tokens"]) == (1024, 4096)
     assert mixed["pmc_vqa"]["file"] == "data/med_vqa/test_pmc_vqa.jsonl"
     with pytest.raises(ConfigError, match="unknown task"):
         config.test_sets("nope")
+    # the validation set of a task takes the place of its test sets
+    val = config.test_sets("med_vqa", "validation")
+    assert [(s["name"], s["file"], s["generation"]["max_tokens"]) for s in val] == [("validation", "data/med_vqa/val.jsonl", 4096)]
+    with pytest.raises(ConfigError, match="no validation set"):
+        config.test_sets("modality_experts", "validation")
 
 
 def test_evaluation_blocks_belong_to_the_task(tmp_path, monkeypatch):

@@ -11,7 +11,7 @@ train:
   max_completion: 2048
 eval:
   # tested on sets of the two single-teacher tasks, each generated with the settings of its own task
-  test_from: {cxr_report: [mimic_cxr, iu_xray], med_vqa: [pmc_vqa]}
+  test_from: {cxr_report: [mimic_cxr, iu_xray], med_vqa: [pmc_vqa, medxpertqa_mm, mmmu_health]}
   metrics: [1/RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert-5, CheXbert-14, GREEN, accuracy, truncated]
 overrides:
   # The language gap is measured on the report teacher only (the reasoning teacher is already close to the student),
