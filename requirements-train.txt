@@ -1,0 +1,12 @@
+# The training environment. scripts/install_train_env.sh installs this file.
+# These are the versions every number in benchmarks/README.md was produced with.
+# vLLM pins torch (2.11.0), torchvision and torchaudio itself.
+vllm==0.23.0
+ms-swift==4.6.0
+transformers==4.57.6
+trl==0.29.1
+peft==0.20.0
+accelerate==1.15.0
+datasets==4.8.4
+deepspeed==0.19.8
+qwen-vl-utils==0.0.14

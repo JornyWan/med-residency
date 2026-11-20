@@ -4,8 +4,8 @@
 #   bash scripts/install_train_env.sh /path/to/envs/medres        # creates the conda environment there
 #   bash scripts/install_train_env.sh --patch-only                # only patch the ms-swift of the active environment
 #
-# The versions are the ones every number in benchmarks/README.md was produced with. Two small patches are applied to
-# the installed ms-swift (each is idempotent and marked with "medresidency patch" in the patched file):
+# The versions are pinned in requirements-train.txt. Two small patches are applied to the installed ms-swift (each is
+# idempotent and marked with "medresidency patch" in the patched file):
 #
 #   1. swift/pipelines/infer/deploy.py   On-policy distillation asks the teacher server to score the student's response,
 #      which is sent as raw token ids. The server's media pre-processing assumes every content item is a dict and
@@ -25,7 +25,7 @@ else
     conda create -y -p "$ENV" python=3.12
     PY="$ENV/bin/python"
     "$PY" -m pip install -U pip
-    "$PY" -m pip install "vllm==0.23.0" "ms-swift==4.6.0" deepspeed qwen-vl-utils
+    "$PY" -m pip install -r "$REPO/requirements-train.txt"
     "$PY" -m pip install -e "$REPO"
 fi
 

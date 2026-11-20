@@ -33,18 +33,24 @@ bash scripts/install_train_env.sh /path/to/envs/medres
 conda activate /path/to/envs/medres
 ```
 
-The script creates a conda environment with Python 3.12, installs `vllm==0.23.0` and `ms-swift==4.6.0` with
-DeepSpeed, installs MedResidency in editable mode, and prints the versions it ended up with. The benchmark was
-produced with:
+The script creates a conda environment with Python 3.12, installs the packages of `requirements-train.txt`,
+installs MedResidency in editable mode, and prints the versions it ended up with. The requirements file pins the
+versions the benchmark was produced with:
 
 | Package | Version |
 |:--|:--|
 | ms-swift | 4.6.0 |
 | vLLM | 0.23.0 |
-| torch | 2.11.0 (CUDA 13.0 build) |
+| torch | 2.11.0 (CUDA 13.0 build; pinned by vLLM) |
 | transformers | 4.57.6 |
 | trl | 0.29.1 |
+| peft | 0.20.0 |
+| accelerate | 1.15.0 |
+| datasets | 4.8.4 |
 | deepspeed | 0.19.8 |
+| qwen-vl-utils | 0.0.14 |
+
+ms-swift 4.6.0 itself accepts newer releases of `transformers` and `trl` than these. They have not been tried.
 
 The script also applies two small patches to the installed ms-swift. Both are idempotent and marked with
 `medresidency patch` in the patched file:
