@@ -213,6 +213,21 @@ def test_run_scores_generations_that_exist(tmp_path, monkeypatch, capsys):
         assert message in capsys.readouterr().err
 
 
+def test_a_missing_model_is_reported_before_generating(tmp_path, monkeypatch, capsys):
+    data, _ = _vqa_example()
+    monkeypatch.setenv("MEDRES_DATA", str(tmp_path / "data"))
+    test_file = tmp_path / "data/med_vqa/test_pmc_vqa.jsonl"
+    jsonl.write(test_file, data)
+    out = str(tmp_path / "evals")
+    run_argv = ["medres eval run", "--task", "med_vqa", "--sets", "pmc_vqa", "--out", out]
+    generate_argv = ["medres eval generate", "--data", str(test_file), "--out", f"{out}/pmc_vqa.jsonl"]
+    for tool, argv in ((run, run_argv), (generate, generate_argv)):
+        monkeypatch.setattr(sys, "argv", [*argv, "--model", "runs/x/checkpoint-300"])
+        with pytest.raises(SystemExit):
+            tool.main()
+        assert "model directory not found: runs/x/checkpoint-300" in capsys.readouterr().err
+
+
 def test_run_needs_the_metrics_environment_for_reports(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("MEDRES_DATA", str(tmp_path))
     for name in ("test_mimic", "test_iu"):

@@ -148,6 +148,8 @@ def main():
     a = p.parse_args()
     if len(a.data) != len(a.out):
         p.error("--out needs one file per --data file")
+    if not os.path.isdir(a.model):
+        p.error(f"model directory not found: {a.model}")
     try:
         opt = resolve(a)
     except config.ConfigError as e:

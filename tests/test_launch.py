@@ -168,3 +168,12 @@ def test_refuses_to_overwrite_a_finished_run(tmp_path):
         launch.run(cfg)
     cfg["run"]["resume"] = True
     launch.run(cfg)  # complete: nothing is started
+
+
+def test_refuses_to_start_without_the_training_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("MEDRES_DATA", str(tmp_path / "data"))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    cfg = config.load("cxr_report", "adaopd", overrides=[f"run.output_root={tmp_path}/runs"])
+    with pytest.raises(launch.LaunchError, match=r"not found: \S+/cxr_report/train.jsonl, \S+/train_teacher.jsonl"):
+        launch.run(cfg)
+    assert not (tmp_path / "runs").exists()  # nothing was started

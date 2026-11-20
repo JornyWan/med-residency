@@ -115,6 +115,8 @@ def main():
         )
 
     todo = [s for s in sets if not os.path.exists(s["out"])]
+    if todo and not os.path.isdir(a.model):
+        p.error(f"model directory not found: {a.model}")
     for s in sets:
         if s not in todo:
             print(f"{s['out']} exists: kept", flush=True)

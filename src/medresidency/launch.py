@@ -380,6 +380,10 @@ def run(cfg: dict, dry_run: bool = False) -> None:
     if not todo:
         print("[medres] nothing to do: every stage has its last checkpoint")
         return
+    files = {stage.args[key] for stage, _ in todo for key in ("dataset", "chord_sft_dataset") if key in stage.args}
+    missing = sorted(f for f in files if not os.path.isfile(f))
+    if missing:  # said now, not by ms-swift after the teachers have loaded
+        raise LaunchError(f"training files not found: {', '.join(missing)} (docs/data.md says how to build them)")
     meta = Path(cfg["run"]["output_root"]) / cfg["run"]["name"] / "medres"
     meta.mkdir(parents=True, exist_ok=True)
     (meta / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
