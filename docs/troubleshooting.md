@@ -81,6 +81,11 @@ ms-swift caches the pre-processed dataset under a name that does not depend on t
 rewrites the cache another run is reading. The launcher gives every run its own `MODELSCOPE_CACHE` and
 `HF_DATASETS_CACHE`. Keep these lines when you run the commands of `commands.sh` by hand.
 
+**The log has a traceback that ends in `OSError: [Errno 16] Device or resource busy: '.../pymp-...'`**
+
+The workers that pre-process the dataset could not delete their temporary directory, which happens when `TMPDIR` is
+on a network file system. The run is not affected.
+
 **vLLM stops with a compiler error (`nvcc`) at the first sampled token**
 
 vLLM's FlashInfer sampler is compiled at first use, and compute nodes rarely have the CUDA compiler. The launcher
