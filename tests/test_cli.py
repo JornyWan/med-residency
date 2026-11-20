@@ -9,9 +9,9 @@ from medresidency import cli
 def test_every_tool_exists():
     package = Path(cli.__file__).parent
     for tools in cli.TOOLS.values():
-        for module, metrics_environment, text in tools.values():
+        for module, text in tools.values():
             assert (package / (module.replace(".", "/") + ".py")).is_file() and text
-            if not metrics_environment:  # the others are run as files by the python of the metrics environment
+            if module not in cli.METRICS_ENV:  # those are run as files by the python of the metrics environment
                 assert callable(importlib.import_module(f"medresidency.{module}").main)
 
 
@@ -28,8 +28,8 @@ def test_group_help(capsys):
 
 def test_tool_help_needs_no_gpu_packages(capsys):
     for group, tools in cli.TOOLS.items():
-        for name, (_, metrics_environment, _) in tools.items():
-            if metrics_environment:
+        for name, (module, _) in tools.items():
+            if module in cli.METRICS_ENV:
                 continue
             with pytest.raises(SystemExit) as e:
                 cli.main([group, name, "--help"])

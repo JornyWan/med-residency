@@ -11,6 +11,7 @@ Every prompt asks for step-by-step reasoning and the letter of the answer inside
 answers to train.jsonl (offline KD, replay) come from `medres eval generate` + `medres data teacher-outputs`.
 All three sources are public (docs/data.md has the download commands).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,8 +26,13 @@ from medresidency import config, jsonl
 
 INSTRUCTION = "{q}\nReason step by step, then give the letter of the correct option inside <answer></answer> tags."
 MAX_SIDE = 896
-MMMU_HEALTH = ("Basic_Medical_Science", "Clinical_Medicine", "Diagnostics_and_Laboratory_Medicine", "Pharmacy",
-               "Public_Health")
+MMMU_HEALTH = (
+    "Basic_Medical_Science",
+    "Clinical_Medicine",
+    "Diagnostics_and_Laboratory_Medicine",
+    "Pharmacy",
+    "Public_Health",
+)
 
 
 def user_turn(question: str) -> str:
@@ -34,19 +40,19 @@ def user_turn(question: str) -> str:
 
 
 def pmc_question(r: dict) -> str:
-    """PMC-VQA writes its options as "A: text"; shown to the model as "A) text" """
+    """The question with its options. PMC-VQA writes them as "A: text"; the model sees "A) text"."""
     options = "\n".join(r[f"Choice {k}"].strip().replace(f"{k}:", f"{k})", 1) for k in "ABCD")
     return f"{r['Question'].strip()}\n{options}"
 
 
 def mmmu_question(question: str, options: list[str]) -> str:
-    return (question.replace("<image 1>", "the image") + "\nAnswer Choices:\n"
-            + "\n".join(f"({k}) {o}" for k, o in zip("ABCDE", options)))
+    choices = "\n".join(f"({k}) {o}" for k, o in zip("ABCDE", options))
+    return question.replace("<image 1>", "the image") + "\nAnswer Choices:\n" + choices
 
 
 def mmmu_usable(r: dict, options: list) -> bool:
-    return (r["question_type"] == "multiple-choice" and r["image_1"] is not None and r["image_2"] is None
-            and len(options) <= 5)
+    single_image = r["image_1"] is not None and r["image_2"] is None
+    return r["question_type"] == "multiple-choice" and single_image and len(options) <= 5
 
 
 class Images:
@@ -55,8 +61,9 @@ class Images:
         os.makedirs(self.dir, exist_ok=True)
 
     def save(self, src, name: str) -> str:
-        """`src` is a path or the bytes of an image; returns the absolute path of the down-sized copy"""
+        """Save a down-sized copy of an image (a path or its bytes) and return the absolute path of the copy."""
         from PIL import Image
+
         dst = os.path.abspath(f"{self.dir}/{name}.jpg")
         if not os.path.exists(dst):
             img = Image.open(io.BytesIO(src) if isinstance(src, bytes) else src).convert("RGB")
@@ -66,7 +73,7 @@ class Images:
 
 
 def pmc_rows(root: str, file: str, seed: int) -> list[dict]:
-    """the questions of a PMC-VQA file in the (fixed) order they are drawn in"""
+    """The questions of a PMC-VQA file in the (fixed) order they are drawn in."""
     with open(f"{root}/{file}") as f:
         rows = list(csv.DictReader(f))
     random.Random(seed).shuffle(rows)
@@ -74,8 +81,9 @@ def pmc_rows(root: str, file: str, seed: int) -> list[dict]:
 
 
 def held_out(rows: list[dict], n_train: int, n_val: int) -> list[dict]:
-    """validation questions: they follow the n_train training questions, no training question uses their figure, and
-    each figure gives one question"""
+    """Validation questions, drawn from the rows after the `n_train` training questions.
+
+    No training question uses their figure, and each figure gives one question."""
     used = {r["Figure_path"] for r in rows[:n_train]}
     val = []
     for r in rows[n_train:]:
@@ -86,42 +94,54 @@ def held_out(rows: list[dict], n_train: int, n_val: int) -> list[dict]:
 
 
 def pmc_items(root: str, rows: list[dict], images: Images) -> list[dict]:
-    return [dict(image=images.save(f"{root}/figures/{r['Figure_path']}", "pmc_" + os.path.splitext(r["Figure_path"])[0]),
-                 question=pmc_question(r), answer=r["Answer"].strip()) for r in rows]
+    items = []
+    for r in rows:
+        figure = r["Figure_path"]
+        image = images.save(f"{root}/figures/{figure}", "pmc_" + os.path.splitext(figure)[0])
+        items.append({"image": image, "question": pmc_question(r), "answer": r["Answer"].strip()})
+    return items
 
 
 def medxpert_items(root: str, images: Images) -> list[dict]:
     img_dir = next(d for d in (f"{root}/images/images", f"{root}/images") if glob.glob(f"{d}/*.*"))
     items = []
     for r in jsonl.read(f"{root}/MM/test.jsonl"):
-        if len(r["images"]) == 1:
-            name = r["images"][0]
-            items.append(dict(image=images.save(f"{img_dir}/{name}", "medxpert_" + os.path.splitext(name)[0]),
-                              question=r["question"], answer=r["label"]))
+        if len(r["images"]) != 1:
+            continue
+        name = r["images"][0]
+        image = images.save(f"{img_dir}/{name}", "medxpert_" + os.path.splitext(name)[0])
+        items.append({"image": image, "question": r["question"], "answer": r["label"]})
     return items
 
 
 def mmmu_items(root: str, images: Images) -> list[dict]:
     import pandas as pd
+
     items = []
     for subject in MMMU_HEALTH:
         for path in sorted(glob.glob(f"{root}/{subject}/validation-*.parquet")):
             for _, r in pd.read_parquet(path).iterrows():
                 options = ast.literal_eval(r["options"])
-                if mmmu_usable(r, options):
-                    items.append(dict(image=images.save(r["image_1"]["bytes"], "mmmu_" + r["id"]),
-                                      question=mmmu_question(r["question"], options), answer=r["answer"]))
+                if not mmmu_usable(r, options):
+                    continue
+                image = images.save(r["image_1"]["bytes"], "mmmu_" + r["id"])
+                question = mmmu_question(r["question"], options)
+                items.append({"image": image, "question": question, "answer": r["answer"]})
     return items
 
 
 def test_rows(domain: str, items: list[dict]) -> list[dict]:
-    return [jsonl.user_row(user_turn(x["question"]), x["image"], id=f"{domain}/{i}", domain=domain, answer=x["answer"],
-                           parser="letter") for i, x in enumerate(items)]
+    rows = []
+    for i, x in enumerate(items):
+        fields = {"id": f"{domain}/{i}", "domain": domain, "answer": x["answer"], "parser": "letter"}
+        rows.append(jsonl.user_row(user_turn(x["question"]), x["image"], **fields))
+    return rows
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres data med-vqa", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres data med-vqa", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--pmc-vqa", help="directory with train_2.csv, test_2.csv and figures/")
     p.add_argument("--medxpertqa", help="directory with MM/test.jsonl and images/")
     p.add_argument("--mmmu", help="directory with <subject>/validation-*.parquet")
@@ -136,13 +156,15 @@ def main():
     images = Images(a.out)
     if a.pmc_vqa:
         pool = pmc_rows(a.pmc_vqa, "train_2.csv", 0)
-        train = pmc_items(a.pmc_vqa, pool[:a.n_train], images)
-        rows = [jsonl.user_row(user_turn(x["question"]), x["image"], teacher_tag=a.teacher_tag,
-                               solution=f"<answer>{x['answer']}</answer>") for x in train]
+        train = pmc_items(a.pmc_vqa, pool[: a.n_train], images)
+        rows = []
+        for x in train:
+            fields = {"teacher_tag": a.teacher_tag, "solution": f"<answer>{x['answer']}</answer>"}
+            rows.append(jsonl.user_row(user_turn(x["question"]), x["image"], **fields))
         print("train.jsonl", jsonl.write(f"{a.out}/train.jsonl", rows))
         val = pmc_items(a.pmc_vqa, held_out(pool, a.n_train, a.n_val), images)
         print("val.jsonl", jsonl.write(f"{a.out}/val.jsonl", test_rows("pmc_val", val)))
-        test = pmc_items(a.pmc_vqa, pmc_rows(a.pmc_vqa, "test_2.csv", 1)[:a.n_test], images)
+        test = pmc_items(a.pmc_vqa, pmc_rows(a.pmc_vqa, "test_2.csv", 1)[: a.n_test], images)
         print("test_pmc_vqa.jsonl", jsonl.write(f"{a.out}/test_pmc_vqa.jsonl", test_rows("pmc_vqa", test)))
     if a.medxpertqa:
         rows = test_rows("medxpertqa_mm", medxpert_items(a.medxpertqa, images))

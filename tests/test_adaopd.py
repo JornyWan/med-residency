@@ -7,10 +7,10 @@ from medresidency.adaopd import GapController, fresh_flags
 
 
 def reference_fresh(comp, n=4):
-    """the loop of the plugin the paper's runs were trained with"""
+    """The loop of the plugin the paper's runs were trained with."""
     out, seen = [], set()
     for t in range(len(comp)):
-        g = tuple(comp[max(0, t - n + 1):t + 1])
+        g = tuple(comp[max(0, t - n + 1) : t + 1])
         out.append(not (len(g) == n and g in seen))
         if len(g) == n:
             seen.add(g)

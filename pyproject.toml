@@ -42,4 +42,4 @@ extend-exclude = ["src/medresidency/data/third_party"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
-ignore = ["E501", "E731", "E741", "B905"]
+ignore = ["E731", "E741", "B905"]

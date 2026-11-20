@@ -8,6 +8,7 @@ A run is one nested dictionary, built from YAML layers (later layers win):
 `configs/defaults.yaml` documents every key. Keys that no layer defines are errors, so a typo cannot silently train
 with a default.
 """
+
 from __future__ import annotations
 
 import copy
@@ -19,7 +20,8 @@ import yaml
 
 FIXED = ("run", "student", "data", "train", "teacher_server", "hardware")  # their keys are those of defaults.yaml
 TOP = FIXED + ("teachers", "method", "models", "task")
-TASK_ONLY = ("eval", "generation")  # blocks of a task file read by the evaluation tools (`task`, `test_sets`), not by a run
+# blocks of a task file that the evaluation tools read (`task`, `test_sets`), not a run
+TASK_ONLY = ("eval", "generation")
 _SCI = re.compile(r"[+-]?\d+(\.\d*)?[eE][+-]?\d+")  # "1e-6": a string for YAML 1.1, a number for everybody else
 
 
@@ -30,7 +32,9 @@ class ConfigError(ValueError):
 def config_dir() -> Path:
     d = Path(os.environ.get("MEDRES_CONFIGS") or Path(__file__).resolve().parents[2] / "configs")
     if not (d / "defaults.yaml").is_file():
-        raise ConfigError(f"no configuration files in {d}: install from a clone (`pip install -e .`) or set MEDRES_CONFIGS")
+        raise ConfigError(
+            f"no configuration files in {d}: install from a clone (`pip install -e .`) or set MEDRES_CONFIGS"
+        )
     return d
 
 
@@ -40,7 +44,7 @@ def _read(path) -> dict:
 
 
 def available(kind: str) -> list[str]:
-    """names of the `tasks` or `methods`"""
+    """Names of the `tasks` or `methods`."""
     return sorted(p.stem for p in (config_dir() / kind).glob("*.yaml"))
 
 
@@ -50,16 +54,18 @@ def describe(kind: str, name: str, full: bool = False) -> str:
 
 
 def task(name: str) -> dict:
-    """the YAML of a task, for the tools that need its `eval` and `generation` blocks"""
+    """The YAML of a task, for the tools that need its `eval` and `generation` blocks."""
     if name not in available("tasks"):
         raise ConfigError(f"unknown task {name!r}; available: {', '.join(available('tasks'))}")
     return _read(config_dir() / "tasks" / f"{name}.yaml")
 
 
 def test_sets(name: str, split: str = "test") -> list[dict]:
-    """the test sets of a task: name, file, and the generation settings of the task the set belongs to. A task lists
-    its own sets under `eval.test` and borrows sets of other tasks with `eval.test_from: {task: [set, ...]}`.
-    split="validation": the one set under `eval.validation`, the set to select hyper-parameters on."""
+    """The test sets of a task: name, file, and the generation settings of the task the set belongs to.
+
+    A task lists its own sets under `eval.test` and borrows sets of other tasks with
+    `eval.test_from: {task: [set, ...]}`. With split="validation" the result is the one set under `eval.validation`,
+    the set to select hyper-parameters on."""
     t = task(name)
     ev = t.get("eval") or {}
     profile = (t.get("generation") or {}).get("eval")
@@ -110,7 +116,7 @@ def _set(cfg: dict, item: str) -> None:
 
 
 def load(task: str | None = None, method: str | None = None, recipe: str | None = None, overrides=()) -> dict:
-    """the resolved configuration of a run"""
+    """The resolved configuration of a run."""
     d = config_dir()
     rec = _read(recipe) if recipe else {}
     task = task or rec.get("task")
@@ -138,12 +144,14 @@ def load(task: str | None = None, method: str | None = None, recipe: str | None 
     unknown += [f"{s}.{k}" for s in FIXED for k in cfg[s] if k not in defaults[s]]
     unknown += [f"method.{k}" for k in cfg["method"] if k not in m["method"]]
     if unknown:
-        raise ConfigError(f"unknown configuration keys: {', '.join(unknown)} (see configs/defaults.yaml and "
-                          f"configs/methods/{method}.yaml)")
-    if cfg["run"]["name"] is None:  # a recipe names its runs; one that leaves the method open gets the method appended
+        where = f"configs/defaults.yaml and configs/methods/{method}.yaml"
+        raise ConfigError(f"unknown configuration keys: {', '.join(unknown)} (see {where})")
+    if cfg["run"]["name"] is None:
         stem = f"{task}_{method}"
-        if recipe:
-            stem = Path(recipe).stem + ("" if (rec.get("method") or {}).get("name") else f"_{method}")
+        if recipe:  # a recipe names its runs; one that leaves the method open gets the method appended
+            stem = Path(recipe).stem
+            if not (rec.get("method") or {}).get("name"):
+                stem += f"_{method}"
         cfg["run"]["name"] = f"{stem}_s{cfg['run']['seed']}"
     for name in [cfg["student"]["model"], *cfg["teachers"].values()]:
         model(cfg, name)
@@ -151,21 +159,28 @@ def load(task: str | None = None, method: str | None = None, recipe: str | None 
 
 
 def model(cfg: dict, name: str) -> dict:
-    """a model of the zoo (configs/models.yaml, plus the run's own `models` block): directory, model type, template"""
+    """A model of the zoo (configs/models.yaml, plus the run's own `models` block): directory, model type, template."""
     zoo = _read(config_dir() / "models.yaml")
     for k, v in (cfg.get("models") or {}).items():
         zoo[k] = {**zoo.get(k, {}), **v}
     if name not in zoo:
-        raise ConfigError(f"unknown model {name!r}; available: {', '.join(sorted(zoo))} (add yours to configs/models.yaml)")
+        raise ConfigError(
+            f"unknown model {name!r}; available: {', '.join(sorted(zoo))} (add yours to configs/models.yaml)"
+        )
     e = zoo[name]
     path = Path(e.get("path") or e["hub"].split("/")[-1])
     if not path.is_absolute():
         path = Path(os.environ.get("MEDRES_MODELS", "models")) / path
-    return {"name": name, "dir": str(path), "hub": e.get("hub"), "model_type": e["model_type"],
-            "template": e.get("template", e["model_type"])}
+    return {
+        "name": name,
+        "dir": str(path),
+        "hub": e.get("hub"),
+        "model_type": e["model_type"],
+        "template": e.get("template", e["model_type"]),
+    }
 
 
 def data_path(path: str) -> str:
-    """data files are given relative to $MEDRES_DATA (default ./data) or as absolute paths"""
+    """Data files are given relative to $MEDRES_DATA (default ./data) or as absolute paths."""
     p = Path(path)
     return str(p if p.is_absolute() else Path(os.environ.get("MEDRES_DATA", "data")) / p)

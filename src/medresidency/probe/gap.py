@@ -27,6 +27,7 @@ One GPU that holds both models. Both models read the prompt in the student's cha
 tokenizer (the requirement of per-token on-policy distillation). Writes <out>.json. Prints and writes aggregates
 only: the responses to credentialed prompts (MIMIC-CXR) are credentialed data.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,7 +45,7 @@ CLASSES = ("eos", "overrun", "repeat", "fresh")
 
 
 def token_classes(n: int, finished: bool, teacher_stops, repeat) -> dict:
-    """boolean masks over the n tokens of one response; `teacher_stops`: teacher's p(EOS) > 0.5 at the position"""
+    """Boolean masks over the n tokens of one response; `teacher_stops`: teacher's p(EOS) > 0.5 at the position."""
     body = np.ones(n, bool)
     if finished:
         body[-1] = False
@@ -54,41 +55,52 @@ def token_classes(n: int, finished: bool, teacher_stops, repeat) -> dict:
 
 
 def summarize(recs: list[dict]) -> dict:
-    """recs: per response the per-token arrays A (advantage) and vT (visual evidence), pT (teacher's p(EOS)),
-    rep (4-gram repeats) and `finished`"""
+    """Aggregate the scored responses of one decoding mode.
+
+    A record holds the per-token arrays `A` (advantage), `vT` (visual evidence), `pT` (the teacher's p(EOS)) and
+    `rep` (4-gram repeats) of one response, and whether it `finished`."""
     cls = [token_classes(len(r["A"]), r["finished"], r["pT"] > 0.5, r["rep"]) for r in recs]
-    cat = lambda key, masks: np.concatenate([r[key][m] for r, m in zip(recs, masks)])  # noqa: E731
+
+    def cat(key, masks):
+        return np.concatenate([r[key][m] for r, m in zip(recs, masks)])
+
     fresh = [c["fresh"] for c in cls]
     not_repeat = [~r["rep"] for r in recs]
-    s = {"n": len(recs), "finished": float(np.mean([r["finished"] for r in recs])),
-         "mean_len": float(np.mean([len(r["A"]) for r in recs])),
-         "gap": float((cat("vT", fresh) - cat("A", fresh)).mean()),
-         "visual_evidence": float(cat("vT", fresh).mean()), "advantage": float(cat("A", fresh).mean()),
-         "gap_trainer": float((cat("vT", not_repeat) - cat("A", not_repeat)).mean())}
+    s = {
+        "n": len(recs),
+        "finished": float(np.mean([r["finished"] for r in recs])),
+        "mean_len": float(np.mean([len(r["A"]) for r in recs])),
+        "gap": float((cat("vT", fresh) - cat("A", fresh)).mean()),
+        "visual_evidence": float(cat("vT", fresh).mean()),
+        "advantage": float(cat("A", fresh).mean()),
+        "gap_trainer": float((cat("vT", not_repeat) - cat("A", not_repeat)).mean()),
+    }
     s.update({f"n_{c}": int(sum(m[c].sum() for m in cls)) for c in CLASSES})
     return s
 
 
 def prompt_inputs(proc, rows: list[dict], image: bool = True):
-    """processor inputs of the prompts, with the image or as text only"""
+    """Processor inputs of the prompts, with the image or as text only."""
     from PIL import Image
+
     texts = []
     for r in rows:
         content = chat_content(r["messages"][0]["content"])
         if not image:
             text = "".join(c["text"] for c in content if c["type"] == "text").strip()
             content = [{"type": "text", "text": text}]
-        texts.append(proc.apply_chat_template([{"role": "user", "content": content}], tokenize=False,
-                                              add_generation_prompt=True))
+        messages = [{"role": "user", "content": content}]
+        texts.append(proc.apply_chat_template(messages, tokenize=False, add_generation_prompt=True))
     if not image:
         return proc(text=texts, return_tensors="pt", padding=True)
-    return proc(text=texts, images=[Image.open(r["images"][0]).convert("RGB") for r in rows], return_tensors="pt",
-                padding=True)
+    images = [Image.open(r["images"][0]).convert("RGB") for r in rows]
+    return proc(text=texts, images=images, return_tensors="pt", padding=True)
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres probe gap", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres probe gap", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--data", required=True, help="training prompts of the task (train.jsonl)")
     p.add_argument("--student", required=True, help="model directory of the untrained student")
     p.add_argument("--teacher", required=True, help="model directory of the teacher")
@@ -108,10 +120,12 @@ def main():
     import torch
     import transformers
 
-    def load(path):  # the model class named in the model's config.json
+    def load(path):
+        """Load a model with the class named in its config.json."""
         with open(os.path.join(path, "config.json")) as f:
             cls = getattr(transformers, json.load(f)["architectures"][0])
-        return cls.from_pretrained(path, torch_dtype=torch.bfloat16, attn_implementation="sdpa", device_map="cuda").eval()
+        model = cls.from_pretrained(path, torch_dtype=torch.bfloat16, attn_implementation="sdpa", device_map="cuda")
+        return model.eval()
 
     torch.manual_seed(a.seed)
     proc = transformers.AutoProcessor.from_pretrained(a.student)
@@ -123,27 +137,29 @@ def main():
 
     @torch.no_grad()
     def generate(model, sample: bool) -> list[list[int]]:
-        """token ids of one response per prompt, up to and including the first EOS"""
-        kw = dict(do_sample=True, temperature=1.0, top_p=1.0, top_k=0) if sample else \
-            dict(do_sample=False, temperature=None, top_p=None, top_k=None)
+        """Token ids of one response per prompt, up to and including the first EOS."""
+        if sample:
+            decoding = dict(do_sample=True, temperature=1.0, top_p=1.0, top_k=0)
+        else:
+            decoding = dict(do_sample=False, temperature=None, top_p=None, top_k=None)
+        limits = dict(max_new_tokens=a.max_new_tokens, eos_token_id=eos, pad_token_id=pad, repetition_penalty=1.0)
         outs = []
         for i in range(0, len(rows), a.bs):
-            x = prompt_inputs(proc, rows[i:i + a.bs]).to(model.device)
-            g = model.generate(**x, max_new_tokens=a.max_new_tokens, eos_token_id=eos, pad_token_id=pad,
-                                 repetition_penalty=1.0, **kw)
-            for row in g[:, x["input_ids"].shape[1]:].tolist():
+            x = prompt_inputs(proc, rows[i : i + a.bs]).to(model.device)
+            g = model.generate(**x, **limits, **decoding)
+            for row in g[:, x["input_ids"].shape[1] :].tolist():
                 stop = next((t for t, y in enumerate(row) if y in eos), len(row) - 1)
-                outs.append(row[:stop + 1])
+                outs.append(row[: stop + 1])
         return outs
 
     @torch.no_grad()
     def score(model, x, comp: list[int]):
-        """per token of the response: log p(token), p(EOS), under the prompt x (one prompt, with or without image)"""
+        """Per token of the response: log p(token), p(EOS), under the prompt x (one prompt, with or without image)."""
         ids = torch.cat([x["input_ids"][0], torch.tensor(comp, device=model.device)])[None]
         vision = {k: v for k, v in x.items() if k not in ("input_ids", "attention_mask")}
         logits = model(input_ids=ids, attention_mask=torch.ones_like(ids), **vision).logits
         start = x["input_ids"].shape[1] - 1
-        lg = logits[0, start:start + len(comp)].float().log_softmax(-1)
+        lg = logits[0, start : start + len(comp)].float().log_softmax(-1)
         lp = lg.gather(1, torch.tensor(comp, device=lg.device)[:, None])[:, 0]
         return lp.cpu().numpy(), lg[:, eos].exp().sum(-1).cpu().numpy()
 
@@ -161,21 +177,42 @@ def main():
             del student, model
             torch.cuda.empty_cache()
 
-    res = {"data": a.data, "student": a.student, "teacher": a.teacher, "tag": a.tag, "seed": a.seed,
-           "max_new_tokens": a.max_new_tokens, "tau": a.tau}
+    res = {
+        "data": a.data,
+        "student": a.student,
+        "teacher": a.teacher,
+        "tag": a.tag,
+        "seed": a.seed,
+        "max_new_tokens": a.max_new_tokens,
+        "tau": a.tau,
+    }
     for mode, comps in rolls.items():
-        recs = [{"A": d["lpT"] - d["lpS"], "vT": d["lpT"] - d["lnT"], "pT": d["pT"],
-                 "rep": ~np.array(fresh_flags(comp)), "finished": comp[-1] in eos} for comp, d in zip(comps, sc[mode])]
+        recs = [
+            {
+                "A": d["lpT"] - d["lpS"],
+                "vT": d["lpT"] - d["lnT"],
+                "pT": d["pT"],
+                "rep": ~np.array(fresh_flags(comp)),
+                "finished": comp[-1] in eos,
+            }
+            for comp, d in zip(comps, sc[mode])
+        ]
         res[mode] = summarize(recs)
-        print(mode, json.dumps({k: round(v, 3) if isinstance(v, float) else v for k, v in res[mode].items()}), flush=True)
-    g = res["sampled"]["gap_trainer"]
-    res["first_step_mu"] = GapController(tau=a.tau).update(g)
-    print(f"language gap {res['sampled']['gap']:.2f} nats on sampled responses (greedy {res['greedy']['gap']:.2f}), "
-          f"visual evidence {res['sampled']['visual_evidence']:+.2f}; tau = {a.tau}: AdaOPD would start with "
-          f"mu = {res['first_step_mu']:.2f} "
-          + ("(imitation of teacher outputs first)" if res["first_step_mu"] >= 1 else
-             "(a mixture of imitation and on-policy distillation)" if res["first_step_mu"] > 0 else
-             "(on-policy distillation from the first step)"))
+        rounded = {k: round(v, 3) if isinstance(v, float) else v for k, v in res[mode].items()}
+        print(mode, json.dumps(rounded), flush=True)
+
+    sampled, greedy = res["sampled"], res["greedy"]
+    mu = GapController(tau=a.tau).update(sampled["gap_trainer"])
+    res["first_step_mu"] = mu
+    if mu >= 1:
+        start = "imitation of teacher outputs first"
+    elif mu > 0:
+        start = "a mixture of imitation and on-policy distillation"
+    else:
+        start = "on-policy distillation from the first step"
+    print(f"language gap {sampled['gap']:.2f} nats on sampled responses (greedy {greedy['gap']:.2f})")
+    print(f"visual evidence {sampled['visual_evidence']:+.2f} nats")
+    print(f"tau = {a.tau}: AdaOPD would start with mu = {mu:.2f} ({start})")
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out + ".json", "w") as f:
         json.dump(res, f, indent=1)

@@ -1,4 +1,5 @@
 """The data builders, on synthetic rows: prompt formats, row schemas, joins. No dataset is needed."""
+
 import csv
 import sys
 
@@ -17,7 +18,8 @@ def test_jsonl_round_trip(tmp_path):
     assert [p.name for p in path.parent.iterdir()] == ["x.jsonl"]  # the temporary file is gone
     assert jsonl.answered_row(rows[0], "Clear.") == {
         "messages": [{"role": "user", "content": "<image>Describe."}, {"role": "assistant", "content": "Clear."}],
-        "images": ["/img/1.jpg"]}
+        "images": ["/img/1.jpg"],
+    }
 
 
 def test_cxr_report_prompt():
@@ -36,17 +38,31 @@ def test_cxr_report_prompt():
 
 def test_cxr_report_sections():
     # a made-up report in the layout of MIMIC-CXR
-    text = ("                                 FINAL REPORT\n EXAMINATION:  CHEST (PA AND LAT)\n\n INDICATION:  Cough.\n\n"
-            " COMPARISON:  None.\n\n FINDINGS: \n\n The lungs are\n clear.\n\n IMPRESSION: \n\n No acute process.\n")
-    assert cxr_report.parse(text) == {"indication": "Cough.", "comparison": "None.", "findings": "The lungs are clear.",
-                                      "impression": "No acute process."}
+    text = (
+        "                                 FINAL REPORT\n EXAMINATION:  CHEST (PA AND LAT)\n\n INDICATION:  Cough.\n\n"
+        " COMPARISON:  None.\n\n FINDINGS: \n\n The lungs are\n clear.\n\n IMPRESSION: \n\n No acute process.\n"
+    )
+    assert cxr_report.parse(text) == {
+        "indication": "Cough.",
+        "comparison": "None.",
+        "findings": "The lungs are clear.",
+        "impression": "No acute process.",
+    }
     # history and the reason for the examination join the indication
-    history = cxr_report.parse(" FINAL REPORT\n CLINICAL HISTORY:  Fever.\n\n REASON FOR EXAM:  Pain.\n\n FINDINGS:  Clear.\n")
+    history = cxr_report.parse(
+        " FINAL REPORT\n CLINICAL HISTORY:  Fever.\n\n REASON FOR EXAM:  Pain.\n\n FINDINGS:  Clear.\n"
+    )
     assert history == {"indication": "Fever. Pain.", "findings": "Clear."}
 
 
 def test_cxr_report_eval_row():
-    x = {"context": "Indication: cough", "img": "/d/img/s1.jpg", "id": "s1", "findings": "Clear.", "impression": "Normal."}
+    x = {
+        "context": "Indication: cough",
+        "img": "/d/img/s1.jpg",
+        "id": "s1",
+        "findings": "Clear.",
+        "impression": "Normal.",
+    }
     row = cxr_report.eval_row({**x, "patient": "p1"})
     assert row["reference"] == "Findings: Clear. Impression: Normal."
     assert (row["id"], row["patient"], row["images"]) == ("s1", "p1", ["/d/img/s1.jpg"])
@@ -55,20 +71,34 @@ def test_cxr_report_eval_row():
 
 
 def test_med_vqa_prompts():
-    r = {"Question": " What is shown? ", "Choice A": " A: lung ", "Choice B": "B: heart", "Choice C": "C: A: liver",
-         "Choice D": "D: bone"}
+    r = {
+        "Question": " What is shown? ",
+        "Choice A": " A: lung ",
+        "Choice B": "B: heart",
+        "Choice C": "C: A: liver",
+        "Choice D": "D: bone",
+    }
     q = med_vqa.pmc_question(r)
     assert q == "What is shown?\nA) lung\nB) heart\nC) A: liver\nD) bone"
-    assert med_vqa.user_turn(q) == f"<image>{q}\nReason step by step, then give the letter of the correct option inside <answer></answer> tags."
-    assert med_vqa.mmmu_question("In <image 1>, what?", ["x", "y"]) == "In the image, what?\nAnswer Choices:\n(A) x\n(B) y"
+    instruction = "Reason step by step, then give the letter of the correct option inside <answer></answer> tags."
+    assert med_vqa.user_turn(q) == f"<image>{q}\n{instruction}"
+    question = med_vqa.mmmu_question("In <image 1>, what?", ["x", "y"])
+    assert question == "In the image, what?\nAnswer Choices:\n(A) x\n(B) y"
     usable = {"question_type": "multiple-choice", "image_1": {"bytes": b""}, "image_2": None}
     assert med_vqa.mmmu_usable(usable, ["x"] * 5)
     assert not med_vqa.mmmu_usable(usable, ["x"] * 6)
     assert not med_vqa.mmmu_usable({**usable, "image_2": {"bytes": b""}}, ["x"])
     assert not med_vqa.mmmu_usable({**usable, "question_type": "open"}, ["x"])
     assert med_vqa.test_rows("pmc_vqa", [{"image": "/i/a.jpg", "question": "Q?", "answer": "B"}]) == [
-        {"messages": [{"role": "user", "content": med_vqa.user_turn("Q?")}], "images": ["/i/a.jpg"], "id": "pmc_vqa/0",
-         "domain": "pmc_vqa", "answer": "B", "parser": "letter"}]
+        {
+            "messages": [{"role": "user", "content": med_vqa.user_turn("Q?")}],
+            "images": ["/i/a.jpg"],
+            "id": "pmc_vqa/0",
+            "domain": "pmc_vqa",
+            "answer": "B",
+            "parser": "letter",
+        }
+    ]
 
 
 def test_med_vqa_held_out():
@@ -90,8 +120,11 @@ def test_med_vqa_builder(tmp_path, monkeypatch):
             w.writerow(["Figure_path", "Question", "Choice A", "Choice B", "Choice C", "Choice D", "Answer"])
             for k in range(3):
                 w.writerow([f"fig{k}.jpg", f"Question {k}?", "A: a", "B: b", "C: c", "D: d", "B"])
-    monkeypatch.setattr(sys, "argv", ["medres data med-vqa", "--pmc-vqa", str(src), "--out", str(out), "--n-train", "2",
-                                      "--n-test", "1"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["medres data med-vqa", "--pmc-vqa", str(src), "--out", str(out), "--n-train", "2", "--n-test", "1"],
+    )
     med_vqa.main()
     train, test = jsonl.read(out / "train.jsonl"), jsonl.read(out / "test_pmc_vqa.jsonl")
     assert len(train) == 2 and set(train[0]) == {"messages", "images", "teacher_tag", "solution"}
@@ -114,7 +147,9 @@ def test_mixed():
     assert sorted(p["teacher_tag"] for p in prompts) == ["medix"] * 3 + ["unirg"] * 3
     assert [mixed.key(p) for p in prompts] == [mixed.key(o) for o in outputs]  # row i of both files is one prompt
     assert {mixed.key(p) for p in prompts} <= {mixed.key(o) for o in a[1] + b[1]}  # only prompts with a teacher output
-    assert len({p["teacher_tag"] for p in prompts[:3]}) == 2 or len({p["teacher_tag"] for p in prompts[3:]}) == 2  # shuffled
+    assert (
+        len({p["teacher_tag"] for p in prompts[:3]}) == 2 or len({p["teacher_tag"] for p in prompts[3:]}) == 2
+    )  # shuffled
     assert mixed.mix([a, b], 3) == (prompts, outputs)  # the same rows every time
     with pytest.raises(SystemExit, match="only 3 prompts"):
         mixed.mix([a, b], 4)
@@ -124,7 +159,9 @@ def test_modality_experts_rows(tmp_path):
     for name in ("CT(Computed Tomography)_train.json", "X-Ray_train.json", "notes_train.json"):
         (tmp_path / name).write_text("[]")
     assert modality_experts.split_files(str(tmp_path)) == [
-        ("CT", str(tmp_path / "CT(Computed Tomography)_train.json")), ("X-Ray", str(tmp_path / "X-Ray_train.json"))]
+        ("CT", str(tmp_path / "CT(Computed Tomography)_train.json")),
+        ("X-Ray", str(tmp_path / "X-Ray_train.json")),
+    ]
     x = {"problem": "Which organ? A) liver B) lung", "solution": "<answer> B </answer>"}
     row = modality_experts.train_row(x, "CT", "/i/1.png")
     assert (row["teacher_tag"], row["solution"], row["images"]) == ("CT", x["solution"], ["/i/1.png"])
@@ -136,14 +173,26 @@ def test_modality_experts_rows(tmp_path):
 
 
 def test_teacher_outputs_join():
-    prompts = [jsonl.user_row(f"<image>q{i}", f"/i/{i}.jpg", teacher_tag="unirg", solution="reference") for i in range(4)]
+    prompts = [
+        jsonl.user_row(f"<image>q{i}", f"/i/{i}.jpg", teacher_tag="unirg", solution="reference") for i in range(4)
+    ]
     gens = [dict(id=i, text=f" answer {i}\n", n_tokens=10 * (i + 1), truncated=int(i == 1)) for i in range(4)]
     gens[2]["malformed"] = 1
     rows, stats = teacher_outputs.join(prompts, gens[::-1])
-    assert [r["messages"][1]["content"] for r in rows] == ["answer 0", "answer 3"]  # prompt order, complete outputs only
+    assert [r["messages"][1]["content"] for r in rows] == [
+        "answer 0",
+        "answer 3",
+    ]  # prompt order, complete outputs only
     assert all(set(r) == {"messages", "images"} for r in rows)  # no reference, no tag
-    assert stats == {"prompts": 4, "kept": 2, "truncated": 1, "malformed": 1, "tokens_mean": 25.0, "tokens_p50": 30,
-                     "tokens_p90": 40}
+    assert stats == {
+        "prompts": 4,
+        "kept": 2,
+        "truncated": 1,
+        "malformed": 1,
+        "tokens_mean": 25.0,
+        "tokens_p50": 30,
+        "tokens_p90": 40,
+    }
     for i, tag in enumerate(("CT", "X-Ray", "CT", "MRI")):
         prompts[i]["teacher_tag"] = tag
     far, far_stats = teacher_outputs.join(prompts, gens, tags=["CT", "MRI"])

@@ -16,6 +16,7 @@ Environment (set by the launcher from the method configuration): MEDRES_ADAOPD_M
 _TAU, _EMA, _GAP0, _TAGS (comma list: measure the gap only on rows of these teachers), _FRESH (0: all tokens),
 _SIGNAL (lang | kl: the gap to the teacher with the image), and MEDRES_RESUME_CHECKPOINT for a resumed run.
 """
+
 import copy
 import os
 
@@ -37,12 +38,15 @@ TAGS = set(filter(None, os.environ.get("MEDRES_ADAOPD_TAGS", "").split(",")))
 FRESH = os.environ.get("MEDRES_ADAOPD_FRESH", "1") == "1"
 SIGNAL = os.environ.get("MEDRES_ADAOPD_SIGNAL", "lang")
 assert MODE in ("control", "monitor") and SIGNAL in ("lang", "kl"), (MODE, SIGNAL)
-GAP = GapController(tau=float(os.environ.get("MEDRES_ADAOPD_TAU", "1.0")), ema=float(os.environ.get("MEDRES_ADAOPD_EMA", "0.9")),
-                    gap0=float(os.environ["MEDRES_ADAOPD_GAP0"]) if os.environ.get("MEDRES_ADAOPD_GAP0") else None)
+GAP = GapController(
+    tau=float(os.environ.get("MEDRES_ADAOPD_TAU", "1.0")),
+    ema=float(os.environ.get("MEDRES_ADAOPD_EMA", "0.9")),
+    gap0=float(os.environ["MEDRES_ADAOPD_GAP0"]) if os.environ.get("MEDRES_ADAOPD_GAP0") else None,
+)
 
 
 def _fresh_mask(mask, ids):
-    """completion positions whose token does not complete a 4-gram already seen in the same response"""
+    """Completion positions whose token does not complete a 4-gram already seen in the same response."""
     fresh = torch.zeros_like(mask)
     for b, comp in enumerate(ids):
         if comp and isinstance(comp[0], list):  # GRPOSample.response_token_ids is [[ids]] (one list per turn)
@@ -55,6 +59,7 @@ def _fresh_mask(mask, ids):
 
 
 def _without_image(s):
+    """A copy of a sample whose prompt has no image, for the teacher's language-only pass."""
     c = copy.copy(s)
     c.messages = [dict(m) for m in s.messages]
     for m in c.messages:
@@ -65,11 +70,17 @@ def _without_image(s):
     return c
 
 
+def _sampled_logps(parsed, mask, ids):
+    """The teacher's log-probabilities of the sampled tokens, laid out like the completion mask."""
+    out = assemble_teacher_completion_logprobs(parsed, mask, mask.device, response_token_ids=ids)
+    return out.topk_logprobs[..., 0]
+
+
 def _assemble_teacher_api_logps(self, samples, batch_encoded_inputs):
     """GRPOTrainer._assemble_teacher_api_logps with a second, image-free teacher pass."""
     flat_samples, chunk_samples_list = [], []
     for batch_encoded in batch_encoded_inputs:
-        chunk = batch_encoded.pop('_chunk_samples', [])
+        chunk = batch_encoded.pop("_chunk_samples", [])
         chunk_samples_list.append(chunk)
         flat_samples.extend(chunk)
     build_opsd_samples(flat_samples)
@@ -84,30 +95,30 @@ def _assemble_teacher_api_logps(self, samples, batch_encoded_inputs):
             infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
-            tag_key=self.args.teacher_tag_key)
+            tag_key=self.args.teacher_tag_key,
+        )
 
     parsed = fetch(flat_samples)
     parsed_n = fetch([_without_image(s) for s in flat_samples])
     offset, vsum, vcnt = 0, 0.0, 0.0
     for batch_encoded, chunk in zip(batch_encoded_inputs, chunk_samples_list):
-        grpo_batch = batch_encoded['grpo_batch']
+        grpo_batch = batch_encoded["grpo_batch"]
         mask, n = grpo_batch.completion_mask, len(chunk)
         ids = [s.response_token_ids for s in chunk]
-        lp = assemble_teacher_completion_logprobs(parsed[offset:offset + n], mask, mask.device,
-                                                  response_token_ids=ids).topk_logprobs[..., 0]
-        ln = assemble_teacher_completion_logprobs(parsed_n[offset:offset + n], mask, mask.device,
-                                                  response_token_ids=ids).topk_logprobs[..., 0]
+        lp = _sampled_logps(parsed[offset : offset + n], mask, ids)
+        ln = _sampled_logps(parsed_n[offset : offset + n], mask, ids)
         grpo_batch.teacher_per_token_logps = lp  # the OPD term itself is unchanged
         m = mask.bool()
         f = _fresh_mask(m, ids) if FRESH else m.clone()
         if TAGS:
             keep = torch.tensor([s.get_tag(self.args.teacher_tag_key) in TAGS for s in chunk], device=f.device)
             f = f & keep[:, None]
-        grpo_batch.gap_ref_logps, grpo_batch.fresh_mask = (lp if SIGNAL == "kl" else ln), f
+        grpo_batch.gap_ref_logps = lp if SIGNAL == "kl" else ln
+        grpo_batch.fresh_mask = f
         vsum += float((lp - ln)[m].sum())
         vcnt += float(m.sum())
         offset += n
-    self._metrics['train']['visual_evidence'].append(vsum / max(vcnt, 1.0))
+    self._metrics["train"]["visual_evidence"].append(vsum / max(vcnt, 1.0))
 
 
 _postprocess_batch_orig = gt.GRPOTrainer._postprocess_batch
@@ -118,7 +129,7 @@ def _postprocess_batch(self, samples, batch_encoded_inputs):
     _postprocess_batch_orig(self, samples, batch_encoded_inputs)
     t = torch.zeros(2, device=self.accelerator.device)
     for be in batch_encoded_inputs:
-        gb = be['grpo_batch']
+        gb = be["grpo_batch"]
         f = gb.fresh_mask
         t[0] += ((gb.old_per_token_logps - gb.gap_ref_logps) * f).sum().float()
         t[1] += f.sum().float()
@@ -127,10 +138,10 @@ def _postprocess_batch(self, samples, batch_encoded_inputs):
     if float(t[1]) == 0:  # no row of the measured teachers in this step: keep mu
         return
     g = float(t[0] / t[1].clamp(min=1.0))
-    mode = 'train' if self.model.training else 'eval'
-    self._metrics[mode]['lang_gap'].append(g)
+    mode = "train" if self.model.training else "eval"
+    self._metrics[mode]["lang_gap"].append(g)
     if MODE == "control":
-        self._metrics[mode]['adaopd_mu'].append(GAP.update(g))
+        self._metrics[mode]["adaopd_mu"].append(GAP.update(g))
 
 
 gt.GRPOTrainer._assemble_teacher_api_logps = _assemble_teacher_api_logps

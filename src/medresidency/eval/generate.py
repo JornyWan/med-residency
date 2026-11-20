@@ -6,7 +6,8 @@ turns them into the supervised file of offline KD). The prompt is the user turn 
 `<image>` stands, in the chat template of the model: the format the model sees in training.
 
     medres eval generate --task cxr_report --model runs/my_run/checkpoint-300 \\
-        --data data/cxr_report/test_mimic.jsonl data/cxr_report/test_iu.jsonl --out evals/my_run/mimic_cxr.jsonl evals/my_run/iu_xray.jsonl
+        --data data/cxr_report/test_mimic.jsonl data/cxr_report/test_iu.jsonl \\
+        --out evals/my_run/mimic_cxr.jsonl evals/my_run/iu_xray.jsonl
     medres eval generate --task modality_experts --profile teacher_outputs --tag CT --model models/Med-R1/VQA_CT \\
         --data data/modality_experts/train.jsonl --out gen/CT.jsonl
 
@@ -17,6 +18,7 @@ turns them into the supervised file of offline KD). The prompt is the user turn 
 Output, one line per prompt: {id, text, n_tokens, truncated[, malformed]}; `id` is the row's own or its row number.
 Prints counts only: the responses to credentialed data (MIMIC-CXR) are credentialed data.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,21 +27,31 @@ import re
 from medresidency import config, jsonl
 
 CHUNK = 2000  # prompts whose images are held in memory at a time
-OPTIONS = {"max_tokens": None, "max_model_len": None, "max_num_seqs": 64, "temperature": 0.0, "well_formed": None,
-           "retries": 4}
+OPTIONS = {
+    "max_tokens": None,
+    "max_model_len": None,
+    "max_num_seqs": 64,
+    "temperature": 0.0,
+    "well_formed": None,
+    "retries": 4,
+}
 
 
 def chat_content(user_turn: str) -> list[dict]:
-    """the user turn as chat-template content: text before the image (if any), the image, text after it (if any)"""
+    """The user turn as chat-template content: text before the image (if any), the image, text after it (if any)."""
     pre, tag, post = user_turn.partition("<image>")
     if not tag or "<image>" in post:
         raise ValueError("a prompt needs exactly one <image>")
-    return [*([{"type": "text", "text": pre}] if pre else []), {"type": "image"},
-            *([{"type": "text", "text": post}] if post else [])]
+    content = [{"type": "image"}]
+    if pre:
+        content.insert(0, {"type": "text", "text": pre})
+    if post:
+        content.append({"type": "text", "text": post})
+    return content
 
 
 def select(rows: list[dict], tag: str | None = None, shard: str = "0/1", limit: int = 0) -> list[dict]:
-    """rows with their `id` (own or row number), restricted to a teacher tag, a shard i/n and the first `limit`"""
+    """Rows with their `id` (own or row number), restricted to a teacher tag, a shard i/n and the first `limit`."""
     rows = [{**r, "id": r.get("id", i)} for i, r in enumerate(rows)]
     if tag:
         rows = [r for r in rows if r.get("teacher_tag") == tag]
@@ -49,14 +61,17 @@ def select(rows: list[dict], tag: str | None = None, shard: str = "0/1", limit: 
 
 
 def resolve(args: argparse.Namespace) -> dict:
-    """generation settings: explicit options, then the task's profile, then the defaults"""
+    """Generation settings: explicit options, then the task's profile, then the defaults."""
     profile = {}
     if args.task:
         profiles = config.task(args.task).get("generation") or {}
         if args.profile not in profiles:
             raise config.ConfigError(f"task {args.task} has no generation profile {args.profile!r}")
         profile = profiles[args.profile]
-    opt = {k: getattr(args, k) if getattr(args, k) is not None else profile.get(k, default) for k, default in OPTIONS.items()}
+    opt = {}
+    for k, default in OPTIONS.items():
+        given = getattr(args, k)
+        opt[k] = given if given is not None else profile.get(k, default)
     if opt["max_tokens"] is None:
         raise config.ConfigError("give --task or --max-tokens")
     if opt["max_model_len"] is None:
@@ -67,25 +82,32 @@ def resolve(args: argparse.Namespace) -> dict:
 def generate(llm, proc, rows: list[dict], opt: dict, seed: int, repetition_penalty: float) -> list[dict]:
     from PIL import Image
     from vllm import SamplingParams
+
     well_formed = re.compile(opt["well_formed"], re.DOTALL) if opt["well_formed"] else None
     out = [None] * len(rows)
     todo = list(range(len(rows)))
     # Format rejection sampling: a sampled response that is not well formed is drawn again (new seed, same
     # temperature), so that the kept responses are well-formed samples of the model. Greedy responses are not retried.
-    for attempt in range(1 + (opt["retries"] if well_formed and opt["temperature"] > 0 else 0)):
-        sampling = SamplingParams(temperature=opt["temperature"], max_tokens=opt["max_tokens"], seed=seed + attempt,
-                                  repetition_penalty=repetition_penalty)
+    retries = opt["retries"] if well_formed and opt["temperature"] > 0 else 0
+    for attempt in range(1 + retries):
+        sampling = SamplingParams(
+            temperature=opt["temperature"],
+            max_tokens=opt["max_tokens"],
+            seed=seed + attempt,
+            repetition_penalty=repetition_penalty,
+        )
         for k in range(0, len(todo), CHUNK):
-            part = todo[k:k + CHUNK]
+            part = todo[k : k + CHUNK]
             prompts = []
             for i in part:
                 msg = [{"role": "user", "content": chat_content(rows[i]["messages"][0]["content"])}]
-                prompts.append({"prompt": proc.apply_chat_template(msg, tokenize=False, add_generation_prompt=True),
-                                "multi_modal_data": {"image": Image.open(rows[i]["images"][0]).convert("RGB")}})
+                text = proc.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+                image = Image.open(rows[i]["images"][0]).convert("RGB")
+                prompts.append({"prompt": text, "multi_modal_data": {"image": image}})
             for i, o in zip(part, llm.generate(prompts, sampling)):
                 c = o.outputs[0]
-                out[i] = dict(id=rows[i]["id"], text=c.text, n_tokens=len(c.token_ids),
-                              truncated=int(c.finish_reason == "length"))
+                truncated = int(c.finish_reason == "length")
+                out[i] = {"id": rows[i]["id"], "text": c.text, "n_tokens": len(c.token_ids), "truncated": truncated}
         if not well_formed:
             break
         todo = [i for i in todo if not well_formed.fullmatch(out[i]["text"].strip())]
@@ -100,8 +122,9 @@ def generate(llm, proc, rows: list[dict], opt: dict, seed: int, repetition_penal
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres eval generate", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres eval generate", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--model", required=True, help="model or checkpoint directory")
     p.add_argument("--data", required=True, nargs="+", help="prompt file(s)")
     p.add_argument("--out", required=True, nargs="+", help="one output file per prompt file")
@@ -134,16 +157,26 @@ def main():
     from vllm import LLM
 
     proc = AutoProcessor.from_pretrained(a.model)
-    llm = LLM(model=a.model, dtype="bfloat16", max_model_len=opt["max_model_len"], limit_mm_per_prompt={"image": 1},
-              gpu_memory_utilization=a.gpu_memory, seed=a.seed, max_num_seqs=opt["max_num_seqs"],
-              tensor_parallel_size=a.tp)
+    llm = LLM(
+        model=a.model,
+        dtype="bfloat16",
+        max_model_len=opt["max_model_len"],
+        limit_mm_per_prompt={"image": 1},
+        gpu_memory_utilization=a.gpu_memory,
+        seed=a.seed,
+        max_num_seqs=opt["max_num_seqs"],
+        tensor_parallel_size=a.tp,
+    )
     for rows, out in files:
         gens = generate(llm, proc, rows, opt, a.seed, a.repetition_penalty)
         jsonl.write(out, gens)
         tokens = sorted(g["n_tokens"] for g in gens)
-        print(f"{out}: {len(gens)} responses, tokens mean {sum(tokens) / len(tokens):.1f} p50 {tokens[len(tokens) // 2]} "
-              f"max {tokens[-1]}, truncated {sum(g['truncated'] for g in gens)}"
-              + (f", malformed {sum(g['malformed'] for g in gens)}" if opt["well_formed"] else ""), flush=True)
+        mean, p50 = sum(tokens) / len(tokens), tokens[len(tokens) // 2]
+        summary = f"{len(gens)} responses, tokens mean {mean:.1f} p50 {p50} max {tokens[-1]}"
+        summary += f", truncated {sum(g['truncated'] for g in gens)}"
+        if opt["well_formed"]:
+            summary += f", malformed {sum(g['malformed'] for g in gens)}"
+        print(f"{out}: {summary}", flush=True)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ sequences per step, learning rate and response limit. They differ only in the lo
 
 To add a method, write `configs/methods/<name>.yaml` and register a builder here (docs/extending.md).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ def register(name):
     def deco(fn):
         METHODS[name] = fn
         return fn
+
     return deco
 
 
@@ -55,7 +57,7 @@ class Stage:
 
 
 class Run:
-    """a resolved configuration with the quantities every method derives from it"""
+    """A resolved configuration with the quantities every method derives from it."""
 
     def __init__(self, cfg: dict):
         self.cfg, self.train, self.method = cfg, cfg["train"], cfg["method"]
@@ -68,23 +70,28 @@ class Run:
     def data(self, key: str) -> str:
         path = self.cfg["data"][key]
         if path is None:
-            raise ConfigError(f"method {self.method['name']} needs data.{key}, which task {self.cfg['task']} does not set")
+            method, task = self.method["name"], self.cfg["task"]
+            raise ConfigError(f"method {method} needs data.{key}, which task {task} does not set")
         return config.data_path(path)
 
     def n_gpus(self, with_teachers: bool) -> int:
         hw = self.cfg["hardware"]
         n = hw["gpus"] - hw["teacher_gpus"] if with_teachers else hw["gpus"]
         if n < 1:
-            raise ConfigError(f"no GPU left for the student: hardware.gpus={hw['gpus']}, teacher_gpus={hw['teacher_gpus']}")
+            raise ConfigError(
+                f"no GPU left for the student: hardware.gpus={hw['gpus']}, teacher_gpus={hw['teacher_gpus']}"
+            )
         return n
 
     def base(self, dataset: str, steps: int, n_gpus: int, out: str, model: str | None = None) -> dict:
-        """arguments of every stage: full fine-tuning at a constant learning rate, `sequences_per_step` per update"""
+        """Arguments of every stage: full fine-tuning at a constant learning rate, `sequences_per_step` per update."""
         t = self.train
         acc, rest = divmod(t["sequences_per_step"], n_gpus * t["per_device_batch"])
         if rest or acc < 1:
-            raise ConfigError(f"train.sequences_per_step={t['sequences_per_step']} is not a multiple of {n_gpus} student "
-                              f"GPUs x per_device_batch {t['per_device_batch']}")
+            raise ConfigError(
+                f"train.sequences_per_step={t['sequences_per_step']} is not a multiple of {n_gpus} student "
+                f"GPUs x per_device_batch {t['per_device_batch']}"
+            )
         return {
             "model": model or self.cfg["student"]["init"] or self.student["dir"],
             "model_type": self.student["model_type"],
@@ -114,7 +121,7 @@ class Run:
         }
 
     def rollout(self) -> dict:
-        """the student samples its own responses with a vLLM engine on its training GPUs"""
+        """The student samples its own responses with a vLLM engine on its training GPUs."""
         t = self.train
         return {
             "use_vllm": True,
@@ -133,7 +140,7 @@ class Run:
         return Stage(name, "sft", {**self.base(dataset, steps, n, out), "logging_steps": 5}, n)
 
     def opd(self, name: str, steps: int, out: str, model: str | None = None, **extra) -> Stage:
-        """on-policy distillation: one sample per prompt, per-token advantage log p_teacher - log p_student"""
+        """On-policy distillation: one sample per prompt, per-token advantage log p_teacher - log p_student."""
         if not self.teachers:
             raise ConfigError(f"method {self.method['name']} needs teachers, and task {self.cfg['task']} has none")
         n = self.n_gpus(with_teachers=True)
@@ -151,7 +158,7 @@ class Run:
         return Stage(name, "rlhf", args, n, teachers=True, **extra)
 
     def replay(self, decay_steps: int, peak: float, valley: float) -> dict:
-        """ms-swift's CHORD term: loss = (1 - mu) * OPD + mu * SFT on the teachers' outputs"""
+        """Arguments of ms-swift's CHORD term: loss = (1 - mu) * OPD + mu * SFT on the teachers' outputs."""
         return {
             "chord_sft_dataset": self.data("teacher_outputs"),
             "chord_sft_per_device_train_batch_size": self.train["replay_per_device_batch"],
@@ -159,20 +166,22 @@ class Run:
             "chord_mu_decay_steps": decay_steps,
             "chord_mu_peak": peak,
             "chord_mu_valley": valley,
-            # with the default (reentrant) checkpointing the second forward pass makes DeepSpeed ZeRO-2 fail with
-            # "Gradient computed twice for this partition"
+            # With the default (reentrant) checkpointing the second forward pass makes DeepSpeed ZeRO-2 fail with
+            # "Gradient computed twice for this partition".
             "gradient_checkpointing_kwargs": {"use_reentrant": False},
         }
 
 
 def build(cfg: dict) -> list[Stage]:
-    """the training stages of a run"""
+    """The training stages of a run."""
     stages = METHODS[cfg["method"]["name"]](Run(cfg))
     for stage in stages:
         stage.args.update(cfg["train"]["swift_args"])  # the user's own ms-swift arguments win
         if stage.steps % stage.args["save_steps"]:
-            raise ConfigError(f"stage {stage.name}: {stage.steps} steps is not a multiple of save_steps="
-                              f"{stage.args['save_steps']}, so its last checkpoint would not be the end of training")
+            raise ConfigError(
+                f"stage {stage.name}: {stage.steps} steps is not a multiple of save_steps="
+                f"{stage.args['save_steps']}, so its last checkpoint would not be the end of training"
+            )
     return stages
 
 
@@ -246,21 +255,21 @@ def adaopd(run: Run) -> list[Stage]:
     m = run.method
     if m["signal"] not in ("lang", "kl"):
         raise ConfigError(f"method.signal={m['signal']!r} must be lang or kl")
-    unknown = set(m["measure_tags"]) - set(run.teachers)
+    unknown = sorted(set(m["measure_tags"]) - set(run.teachers))
     if unknown:
-        raise ConfigError(f"method.measure_tags {sorted(unknown)} are not teachers of this run ({', '.join(run.teachers)})")
+        raise ConfigError(f"method.measure_tags {unknown} are not teachers of this run ({', '.join(run.teachers)})")
     stage = run.opd("train", run.train["steps"], run.out)
     # the schedule arguments are those of CHORD; the plugin replaces the schedule by the measured mu
     stage.args.update(run.replay(run.train["steps"], 1.0, 0.0))
     stage.args["external_plugins"] = [str(PLUGINS / "adaopd_plugin.py")]
-    stage.env.update({
-        "MEDRES_ADAOPD_MODE": "control",
-        "MEDRES_ADAOPD_TAU": str(m["tau"]),
-        "MEDRES_ADAOPD_EMA": str(m["ema"]),
-        "MEDRES_ADAOPD_TAGS": ",".join(m["measure_tags"]),
-        "MEDRES_ADAOPD_FRESH": "1" if m["fresh_tokens"] else "0",
-        "MEDRES_ADAOPD_SIGNAL": m["signal"],
-    })
+    stage.env.update(
+        MEDRES_ADAOPD_MODE="control",
+        MEDRES_ADAOPD_TAU=str(m["tau"]),
+        MEDRES_ADAOPD_EMA=str(m["ema"]),
+        MEDRES_ADAOPD_TAGS=",".join(m["measure_tags"]),
+        MEDRES_ADAOPD_FRESH="1" if m["fresh_tokens"] else "0",
+        MEDRES_ADAOPD_SIGNAL=m["signal"],
+    )
     if m["gap0"] is not None:
         stage.env["MEDRES_ADAOPD_GAP0"] = str(m["gap0"])
     return [stage]

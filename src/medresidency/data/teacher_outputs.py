@@ -15,6 +15,7 @@ student (`medres probe gap`), e.g. `--tags CT MRI US --out data/modality_experts
 
 Outputs of a teacher on credentialed data (MIMIC-CXR) are credentialed data. Prints counts only.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,10 @@ def join(prompts: list[dict], generations: list[dict], tags=None) -> tuple[list[
         gens[g["id"]] = g
     if set(gens) != set(range(len(prompts))):
         n = len(set(gens) & set(range(len(prompts))))
-        raise SystemExit(f"error: generations for {n} of {len(prompts)} prompts ({len(gens) - n} with an unknown id): "
-                         "generate for every row of --prompts (all shards, all teacher tags) before joining")
+        raise SystemExit(
+            f"error: generations for {n} of {len(prompts)} prompts ({len(gens) - n} with an unknown id): "
+            "generate for every row of --prompts (all shards, all teacher tags) before joining"
+        )
     rows, dropped = [], {"truncated": 0, "malformed": 0}
     for i, p in enumerate(prompts):
         g = gens[i]
@@ -41,14 +44,20 @@ def join(prompts: list[dict], generations: list[dict], tags=None) -> tuple[list[
         elif not tags or p.get("teacher_tag") in tags:
             rows.append(jsonl.answered_row(p, g["text"].strip()))
     tokens = sorted(g["n_tokens"] for g in gens.values())
-    return rows, {"prompts": len(prompts), "kept": len(rows), **dropped,
-                  "tokens_mean": round(sum(tokens) / len(tokens), 1), "tokens_p50": tokens[len(tokens) // 2],
-                  "tokens_p90": tokens[int(len(tokens) * .9)]}
+    return rows, {
+        "prompts": len(prompts),
+        "kept": len(rows),
+        **dropped,
+        "tokens_mean": round(sum(tokens) / len(tokens), 1),
+        "tokens_p50": tokens[len(tokens) // 2],
+        "tokens_p90": tokens[int(len(tokens) * 0.9)],
+    }
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres data teacher-outputs", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres data teacher-outputs", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--prompts", required=True, help="the task's train.jsonl")
     p.add_argument("--generations", required=True, nargs="+", help="output file(s) of `medres eval generate`")
     p.add_argument("--out", required=True, help="the task's train_teacher.jsonl")

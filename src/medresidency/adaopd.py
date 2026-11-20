@@ -8,6 +8,7 @@ smooths it over steps (EMA), and sets  mu = clip((EMA(g) - tau) / max(g_0 - tau,
 the first step. A student whose language is far from the teacher's (large gap) imitates the teacher's outputs; once
 the gap is below tau the step is pure on-policy distillation.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,7 @@ def fresh_flags(ids, n: int = 4) -> list[bool]:
     have been written, so its repeated tokens would make it look close to the teacher."""
     seen, flags = set(), []
     for t in range(len(ids)):
-        gram = tuple(ids[max(0, t - n + 1):t + 1])
+        gram = tuple(ids[max(0, t - n + 1) : t + 1])
         full = len(gram) == n
         flags.append(not (full and gram in seen))
         if full:
@@ -30,7 +31,7 @@ def fresh_flags(ids, n: int = 4) -> list[bool]:
 
 
 class GapController:
-    """mu from the measured language gap; `update` is called once per optimizer step"""
+    """Computes mu from the measured language gap; `update` is called once per optimizer step."""
 
     def __init__(self, tau: float = 1.0, ema: float = 0.9, gap0: float | None = None):
         self.tau, self.decay, self.gap0 = tau, ema, gap0
@@ -45,8 +46,10 @@ class GapController:
         return self.mu
 
     def restore(self, logging_jsonl: str, step: int) -> int:
-        """Replay the gaps a run logged up to `step` (ms-swift's logging.jsonl), so that a resumed run continues with
-        the EMA and the first-step gap of the original run. Returns the number of steps replayed."""
+        """Replay the gaps a run logged up to `step` (ms-swift's logging.jsonl).
+
+        A resumed run then continues with the EMA and the first-step gap of the original run. Returns the number of
+        steps replayed."""
         gaps = {}
         with open(logging_jsonl) as f:
             for line in f:

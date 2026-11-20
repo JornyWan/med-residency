@@ -7,7 +7,20 @@ from medresidency import cli, config, launch, methods
 
 def test_to_argv():
     assert launch.to_argv({"a": 1, "b": True, "c": False, "d": None, "e": ["x", "y"], "f": {"k": 1}, "g": 5e-06}) == [
-        "--a", "1", "--b", "true", "--c", "false", "--e", "x", "y", "--f", '{"k": 1}', "--g", "5e-06"]
+        "--a",
+        "1",
+        "--b",
+        "true",
+        "--c",
+        "false",
+        "--e",
+        "x",
+        "y",
+        "--f",
+        '{"k": 1}',
+        "--g",
+        "5e-06",
+    ]
 
 
 def test_gpu_ids(monkeypatch):
@@ -39,7 +52,8 @@ def test_teacher_command():
     opt = dict(zip(cmd[4::2], cmd[5::2]))
     assert opt["--model"] == "models/UniRG-CXR" and opt["--port"] == "8001"
     assert opt["--max_logprobs"] == "20" and opt["--vllm_tensor_parallel_size"] == "2"  # GKD reads the top-20
-    assert opt["--vllm_max_model_len"] == "2560" and json.loads(opt["--vllm_engine_kwargs"]) == {"max_num_batched_tokens": 2048}
+    assert opt["--vllm_max_model_len"] == "2560"
+    assert json.loads(opt["--vllm_engine_kwargs"]) == {"max_num_batched_tokens": 2048}
 
 
 def test_last_checkpoint(tmp_path):
@@ -60,13 +74,26 @@ def test_environment_keeps_what_the_caller_set(monkeypatch):
     assert "HF_HUB_OFFLINE" not in launch.environment(cfg, "/cache")
 
 
-@pytest.mark.parametrize("task, method, expect", [
-    ("cxr_report", "adaopd", ["# teacher unirg", "CUDA_VISIBLE_DEVICES=2,3", "MEDRES_ADAOPD_TAU=1.0", "NPROC_PER_NODE=2",
-                              "--chord_sft_dataset data/cxr_report/train_teacher.jsonl", "swift.cli.main rlhf"]),
-    ("cxr_report", "sft", ["CUDA_VISIBLE_DEVICES=0,1,2,3", "NPROC_PER_NODE=4", "swift.cli.main sft"]),
-    ("cxr_report_vqa", "opd", ["# teacher medix", "# teacher unirg", '"tags": ["unirg"]']),
-    ("med_vqa", "two_stage", ["# stage stage1: 150 steps", "# stage stage2: 150 steps", "stage1/checkpoint-150"]),
-])
+@pytest.mark.parametrize(
+    "task, method, expect",
+    [
+        (
+            "cxr_report",
+            "adaopd",
+            [
+                "# teacher unirg",
+                "CUDA_VISIBLE_DEVICES=2,3",
+                "MEDRES_ADAOPD_TAU=1.0",
+                "NPROC_PER_NODE=2",
+                "--chord_sft_dataset data/cxr_report/train_teacher.jsonl",
+                "swift.cli.main rlhf",
+            ],
+        ),
+        ("cxr_report", "sft", ["CUDA_VISIBLE_DEVICES=0,1,2,3", "NPROC_PER_NODE=4", "swift.cli.main sft"]),
+        ("cxr_report_vqa", "opd", ["# teacher medix", "# teacher unirg", '"tags": ["unirg"]']),
+        ("med_vqa", "two_stage", ["# stage stage1: 150 steps", "# stage stage2: 150 steps", "stage1/checkpoint-150"]),
+    ],
+)
 def test_dry_run_prints_the_commands(capsys, task, method, expect):
     cli.main(["train", "--task", task, "--method", method, "--dry-run"])
     out = capsys.readouterr().out
@@ -80,7 +107,11 @@ def test_reward_server_needs_the_metrics_environment(capsys, monkeypatch):
     monkeypatch.setenv("MEDRES_METRICS_PYTHON", "/envs/metrics/bin/python")
     cli.main(["train", "--task", "cxr_report", "--method", "grpo", "--dry-run"])
     out = capsys.readouterr().out
-    assert "/envs/metrics/bin/python -I" in out and "eval/reward_server.py" in out and "MEDRES_REWARD_URL='http://127.0.0.1:" in out
+    assert (
+        "/envs/metrics/bin/python -I" in out
+        and "eval/reward_server.py" in out
+        and "MEDRES_REWARD_URL='http://127.0.0.1:" in out
+    )
     cli.main(["train", "--task", "med_vqa", "--method", "grpo", "--dry-run"])  # letter accuracy: no server
     assert "reward_server" not in capsys.readouterr().out
 

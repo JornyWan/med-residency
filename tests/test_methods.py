@@ -33,9 +33,14 @@ def test_golden_arguments():
             args = dict(stage.args)
             if "external_plugins" in args:
                 args["external_plugins"] = [Path(p).name for p in args["external_plugins"]]
-            now[f"{task}/{method}/{stage.name}"] = {"command": stage.command, "student_gpus": stage.n_gpus, "env": stage.env,
-                                                    "teacher_logprobs": stage.teacher_logprobs if stage.teachers else None,
-                                                    "reward_server": stage.reward_server, "args": args}
+            now[f"{task}/{method}/{stage.name}"] = {
+                "command": stage.command,
+                "student_gpus": stage.n_gpus,
+                "env": stage.env,
+                "teacher_logprobs": stage.teacher_logprobs if stage.teachers else None,
+                "reward_server": stage.reward_server,
+                "args": args,
+            }
     if os.environ.get("MEDRES_UPDATE_GOLDEN"):
         GOLDEN.write_text(json.dumps(now, indent=1, sort_keys=True) + "\n")
     golden = json.loads(GOLDEN.read_text())
@@ -52,14 +57,19 @@ def test_sequences_per_step_is_the_same_for_every_method():
                 continue
             for stage in build(task, method):
                 a = stage.args
-                assert stage.n_gpus * a["per_device_train_batch_size"] * a["gradient_accumulation_steps"] == want, (task, method)
+                assert stage.n_gpus * a["per_device_train_batch_size"] * a["gradient_accumulation_steps"] == want, (
+                    task,
+                    method,
+                )
 
 
 def test_teacher_methods_keep_two_cards_for_teachers():
     assert [s.n_gpus for s in build("cxr_report", "opd")] == [2]
     assert [s.n_gpus for s in build("cxr_report", "sft")] == [4]
     assert [(s.name, s.command, s.n_gpus, s.teachers, s.steps) for s in build("cxr_report", "two_stage")] == [
-        ("stage1", "sft", 4, False, 150), ("stage2", "rlhf", 2, True, 150)]
+        ("stage1", "sft", 4, False, 150),
+        ("stage2", "rlhf", 2, True, 150),
+    ]
     with pytest.raises(ConfigError, match="no GPU left"):
         build("cxr_report", "opd", "hardware.gpus=2")
     with pytest.raises(ConfigError, match="not a multiple"):
@@ -69,7 +79,10 @@ def test_teacher_methods_keep_two_cards_for_teachers():
 def test_two_stage():
     s1, s2 = build("cxr_report", "two_stage")
     assert s1.output_dir == "runs/cxr_report_two_stage_s42/stage1" and s1.args["save_steps"] == 150
-    assert s2.args["model"] == "runs/cxr_report_two_stage_s42/stage1/checkpoint-150" and s2.output_dir == "runs/cxr_report_two_stage_s42"
+    assert (
+        s2.args["model"] == "runs/cxr_report_two_stage_s42/stage1/checkpoint-150"
+        and s2.output_dir == "runs/cxr_report_two_stage_s42"
+    )
     (only,) = build("cxr_report", "two_stage", "method.stage1_checkpoint=/ckpt/kd-150")
     assert only.args["model"] == "/ckpt/kd-150" and only.steps == 150
     with pytest.raises(ConfigError, match="sft_steps"):
@@ -78,8 +91,14 @@ def test_two_stage():
 
 def test_adaopd_environment():
     (stage,) = build("cxr_report_vqa", "adaopd", "method.tau=0.5", "method.fresh_tokens=false")
-    assert stage.env == {"MEDRES_ADAOPD_MODE": "control", "MEDRES_ADAOPD_TAU": "0.5", "MEDRES_ADAOPD_EMA": "0.9",
-                         "MEDRES_ADAOPD_TAGS": "unirg", "MEDRES_ADAOPD_FRESH": "0", "MEDRES_ADAOPD_SIGNAL": "lang"}
+    assert stage.env == {
+        "MEDRES_ADAOPD_MODE": "control",
+        "MEDRES_ADAOPD_TAU": "0.5",
+        "MEDRES_ADAOPD_EMA": "0.9",
+        "MEDRES_ADAOPD_TAGS": "unirg",
+        "MEDRES_ADAOPD_FRESH": "0",
+        "MEDRES_ADAOPD_SIGNAL": "lang",
+    }
     assert stage.args["chord_sft_dataset"] == "data/cxr_report/train_teacher.jsonl"  # the report teacher's outputs only
     assert Path(stage.args["external_plugins"][0]).is_file()
     with pytest.raises(ConfigError, match="measure_tags"):
@@ -113,4 +132,5 @@ def test_gkd_keeps_the_routing_column_with_several_teachers():
 def test_reward_plugin_registers_the_listed_rewards():
     source = (methods.PLUGINS / "reward_plugin.py").read_text()  # importing it needs ms-swift
     import re
+
     assert sorted(re.findall(r'^orms\["(\w+)"\]', source, re.M)) == sorted(methods.REWARDS)

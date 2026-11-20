@@ -1,4 +1,5 @@
 """JSON-lines files: every data, generation and score file of the framework has one JSON object per line."""
+
 from __future__ import annotations
 
 import json
@@ -11,7 +12,7 @@ def read(path) -> list[dict]:
 
 
 def write(path, rows) -> int:
-    """write through a temporary file, so that a reader never sees half a file; returns the number of rows"""
+    """Write through a temporary file, so that a reader never sees half a file; returns the number of rows."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     n = 0
     with open(f"{path}.tmp", "w") as f:
@@ -23,10 +24,10 @@ def write(path, rows) -> int:
 
 
 def user_row(text: str, image: str, **extra) -> dict:
-    """one prompt in ms-swift's format: a user turn with `<image>` where the image goes, and the image path"""
+    """One prompt in ms-swift's format: a user turn with `<image>` where the image goes, and the image path."""
     return {"messages": [{"role": "user", "content": text}], "images": [image], **extra}
 
 
 def answered_row(row: dict, answer: str) -> dict:
-    """the prompt of `row` with an assistant turn: a supervised example"""
+    """The prompt of `row` with an assistant turn: a supervised example."""
     return {"messages": [row["messages"][0], {"role": "assistant", "content": answer}], "images": row["images"]}

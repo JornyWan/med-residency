@@ -11,11 +11,11 @@ A reward receives the sampled responses and the `solution` field of their rows. 
 `__call__(self, completions, solution, **kwargs) -> list[float]`, register it in `orms`, and list it in
 medresidency/methods.py (REWARDS).
 """
+
 import json
 import os
 import re
 import urllib.request
-from typing import List
 
 from swift.rewards.orm import ORM, orms
 
@@ -23,42 +23,43 @@ from medresidency.answers import ANSWER, final_answer, to_letter
 
 ONLY_ANSWER = re.compile(r"^\s*<answer>(.*?)</answer>\s*$", re.DOTALL)
 ANSWER_RAW = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
-MAX_REPORT_WORDS = 300  # RadGraph's memory grows quadratically with length: one looping 2,048-token report exhausts a GPU
+# RadGraph's memory grows quadratically with length: one looping 2,048-token report exhausts a GPU.
+MAX_REPORT_WORDS = 300
 
 
-def _radcliq(refs, hyps) -> List[float]:
-    req = urllib.request.Request(os.environ["MEDRES_REWARD_URL"] + "/score",
-                                 data=json.dumps({"refs": list(refs), "hyps": list(hyps)}).encode(),
-                                 headers={"Content-Type": "application/json"})
+def _radcliq(refs, hyps) -> list[float]:
+    req = urllib.request.Request(
+        os.environ["MEDRES_REWARD_URL"] + "/score",
+        data=json.dumps({"refs": list(refs), "hyps": list(hyps)}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req, timeout=600) as r:
         return json.loads(r.read())["rewards"]
 
 
 class ReportRadCliQ(ORM):
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, **kwargs) -> list[float]:
         return _radcliq(solution, completions)
 
 
 class McqAccuracy(ORM):
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, **kwargs) -> list[float]:
         return [float(to_letter(final_answer(c)) == ANSWER.search(s).group(1)) for c, s in zip(completions, solution)]
 
 
-class AnswerExact(ORM):
+def _answer(text: str) -> str:
+    """The content of <answer></answer>, or the whole text when the tags are missing."""
+    m = ANSWER_RAW.search(text)
+    return (m.group(1) if m else text).strip()
 
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
-        rewards = []
-        for c, s in zip(completions, solution):
-            g, p = ANSWER_RAW.search(s), ANSWER_RAW.search(c)
-            rewards.append(float((p.group(1).strip() if p else c.strip()) == (g.group(1).strip() if g else s.strip())))
-        return rewards
+
+class AnswerExact(ORM):
+    def __call__(self, completions, solution, **kwargs) -> list[float]:
+        return [float(_answer(c) == _answer(s)) for c, s in zip(completions, solution)]
 
 
 class MixedReportVqa(ORM):
-
-    def __call__(self, completions, solution, **kwargs) -> List[float]:
+    def __call__(self, completions, solution, **kwargs) -> list[float]:
         out, reports = [0.0] * len(completions), []
         for i, (c, s) in enumerate(zip(completions, solution)):
             m = ONLY_ANSWER.match(s)

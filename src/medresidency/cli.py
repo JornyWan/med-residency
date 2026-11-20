@@ -1,10 +1,11 @@
 """The `medres` command.
 
-    medres list [tasks|methods|models|rewards]
-    medres train --task cxr_report --method adaopd [--seed 2] [--name my_run] [key=value ...] [--dry-run]
-    medres train configs/recipes/adaopd/cxr_report_4b_adaopd.yaml --seed 2
-    medres data ...  |  medres eval ...  |  medres probe ...  |  medres stats ...     (see `medres <group> --help`)
+medres list [tasks|methods|models|rewards]
+medres train --task cxr_report --method adaopd [--seed 2] [--name my_run] [key=value ...] [--dry-run]
+medres train configs/recipes/adaopd/cxr_report_4b_adaopd.yaml --seed 2
+medres data ...  |  medres eval ...  |  medres probe ...  |  medres stats ...     (see `medres <group> --help`)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,31 +20,33 @@ import yaml
 
 from medresidency import __version__, config, launch, methods
 
-# name -> (module, runs in the report-metric environment, one-line help). Every tool has its own arguments
-# (`medres <group> <tool> --help`); the ones of the metrics environment are plain files without package imports,
-# executed with $MEDRES_METRICS_PYTHON, because the metric packages cannot be installed next to ms-swift.
+# group -> tool -> (module, one-line help). Every tool parses its own arguments: `medres <group> <tool> --help`.
 TOOLS = {
     "data": {
-        "cxr-report": ("data.cxr_report", False, "MIMIC-CXR -> report prompts, reference reports, validation and test files"),
-        "cxr-iu": ("data.cxr_iu", False, "IU X-ray (ReXrank test split) -> external report test file"),
-        "med-vqa": ("data.med_vqa", False, "PMC-VQA / MedXpertQA / MMMU -> reasoning-VQA prompts and test files"),
-        "mixed": ("data.mixed", False, "mix report and VQA rows, each tagged with its teacher"),
-        "modality-experts": ("data.modality_experts", False, "OmniMedVQA -> prompts tagged with the expert of their modality"),
-        "teacher-outputs": ("data.teacher_outputs", False, "generations of a teacher + prompts -> supervised file (offline KD, replay)"),
+        "cxr-report": ("data.cxr_report", "MIMIC-CXR -> report prompts, references, validation and test files"),
+        "cxr-iu": ("data.cxr_iu", "IU X-ray (ReXrank test split) -> external report test file"),
+        "med-vqa": ("data.med_vqa", "PMC-VQA / MedXpertQA / MMMU -> reasoning-VQA prompts and test files"),
+        "mixed": ("data.mixed", "mix report and VQA rows, each tagged with its teacher"),
+        "modality-experts": ("data.modality_experts", "OmniMedVQA -> prompts tagged with their modality's expert"),
+        "teacher-outputs": ("data.teacher_outputs", "a teacher's generations + prompts -> supervised file"),
     },
     "eval": {
-        "run": ("eval.run", False, "generate and score on every test set of a task"),
-        "generate": ("eval.generate", False, "responses of a model to the prompts of a file (test sets, teacher outputs)"),
-        "vqa": ("eval.vqa", False, "accuracy of generated answers"),
-        "report-score": ("eval.report_score", True, "RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert, BERTScore, BLEU, GREEN"),
+        "run": ("eval.run", "generate and score on every test set of a task"),
+        "generate": ("eval.generate", "a model's responses to the prompts of a file"),
+        "vqa": ("eval.vqa", "accuracy of generated answers"),
+        "report-score": ("eval.report_score", "report metrics: RadCliQ-v1, RadGraph-F1, RaTEScore, CheXbert, GREEN"),
     },
     "probe": {
-        "gap": ("probe.gap", False, "language gap and visual evidence of a teacher-student pair before training"),
+        "gap": ("probe.gap", "language gap and visual evidence of a teacher-student pair before training"),
     },
     "stats": {
-        "compare": ("stats", False, "paired bootstrap between two models on the same test set"),
+        "compare": ("stats", "paired bootstrap between two models on the same test set"),
     },
 }
+
+# The metric packages cannot be installed next to ms-swift. These modules are plain files without package imports
+# and are executed with $MEDRES_METRICS_PYTHON.
+METRICS_ENV = {"eval.report_score"}
 
 
 def _list(what: str | None) -> None:
@@ -54,8 +57,9 @@ def _list(what: str | None) -> None:
 
     for kind in ("tasks", "methods"):
         if what == kind:  # asked for by name: the whole description
-            for n in config.available(kind):
-                print(f"{n}\n{textwrap.fill(config.describe(kind, n, full=True), 100, initial_indent='    ', subsequent_indent='    ')}\n")
+            for name in config.available(kind):
+                text = textwrap.fill(config.describe(kind, name, full=True), 96)
+                print(f"{name}\n{textwrap.indent(text, '    ')}\n")
         elif what is None:
             print(f"{kind}:")
             table([(n, config.describe(kind, n)) for n in config.available(kind)])
@@ -86,14 +90,14 @@ def _tool(group: str, argv: list[str]) -> None:
     tools = TOOLS[group]
     if not argv or argv[0] in ("-h", "--help") or argv[0] not in tools:
         print(f"usage: medres {group} <tool> [options]     (medres {group} <tool> --help)\n")
-        for name, (_, _, text) in tools.items():
+        for name, (_, text) in tools.items():
             print(f"  {name:<18}{text}")
         sys.exit(0 if argv and argv[0] in ("-h", "--help") else 2)
-    module, metrics_env, _ = tools[argv[0]]
-    if metrics_env:
+    module, _ = tools[argv[0]]
+    if module in METRICS_ENV:
         python = os.environ.get("MEDRES_METRICS_PYTHON")
         if not python:
-            sys.exit("error: set MEDRES_METRICS_PYTHON to the python of the metrics environment (scripts/install_metrics_env.sh)")
+            sys.exit("error: set MEDRES_METRICS_PYTHON to the python of the metrics environment (docs/installation.md)")
         file = Path(__file__).parent / (module.replace(".", "/") + ".py")
         sys.exit(subprocess.run([python, "-I", str(file), *argv[1:]]).returncode)
     sys.argv = [f"medres {group} {argv[0]}", *argv[1:]]
@@ -104,22 +108,34 @@ def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in TOOLS:
         return _tool(argv[0], argv[1:])
-    p = argparse.ArgumentParser(prog="medres", description="MedResidency: open post-training of medical vision-language models.",
-                                epilog="tool groups with their own help: " + ", ".join(f"medres {g}" for g in TOOLS))
+    p = argparse.ArgumentParser(
+        prog="medres",
+        description="MedResidency: open post-training of medical vision-language models.",
+        epilog="tool groups with their own help: " + ", ".join(f"medres {g}" for g in TOOLS),
+    )
     p.add_argument("--version", action="version", version=f"medresidency {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
     ls = sub.add_parser("list", help="tasks, methods, models and rewards")
     ls.add_argument("what", nargs="?", choices=["tasks", "methods", "models", "rewards"])
-    tr = sub.add_parser("train", help="train a student with a method on a task",
-                        description="Every key of configs/defaults.yaml and of the method's YAML can be set as key=value.")
-    tr.add_argument("items", nargs="*", metavar="recipe.yaml | key=value", help="a recipe file and/or overrides such as train.lr=1e-6")
+    tr = sub.add_parser(
+        "train",
+        help="train a student with a method on a task",
+        description="Every key of configs/defaults.yaml and of the method's YAML can be set as key=value.",
+    )
+    tr.add_argument(
+        "items",
+        nargs="*",
+        metavar="recipe.yaml | key=value",
+        help="a recipe file and/or overrides such as train.lr=1e-6",
+    )
     tr.add_argument("--task", help="see `medres list tasks`")
     tr.add_argument("--method", help="see `medres list methods`")
     tr.add_argument("--seed", type=int, help="run.seed")
     tr.add_argument("--name", help="run.name (default <task>_<method>_s<seed>)")
     tr.add_argument("--dry-run", action="store_true", help="print the commands of the run and start nothing")
     tr.add_argument("--print-config", action="store_true", help="print the resolved configuration and exit")
-    if argv and argv[0] == "train":  # its own parser: key=value overrides may come before, between and after options
+    if argv and argv[0] == "train":
+        # parsed by its own parser: key=value overrides may come before, between and after the options
         a = tr.parse_intermixed_args(argv[1:])
         a.command = "train"
     else:

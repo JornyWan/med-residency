@@ -69,15 +69,21 @@ def test_teachers_are_replaced_as_a_whole():
 
 def test_models_and_data_paths(monkeypatch):
     cfg = config.load("modality_experts", "opd")
-    assert config.model(cfg, "med-r1-ct") == {"name": "med-r1-ct", "dir": "models/Med-R1/VQA_CT", "hub": "yuxianglai117/Med-R1",
-                                              "model_type": "qwen2_vl", "template": "qwen2_vl"}
+    assert config.model(cfg, "med-r1-ct") == {
+        "name": "med-r1-ct",
+        "dir": "models/Med-R1/VQA_CT",
+        "hub": "yuxianglai117/Med-R1",
+        "model_type": "qwen2_vl",
+        "template": "qwen2_vl",
+    }
     monkeypatch.setenv("MEDRES_MODELS", "/weights")
     monkeypatch.setenv("MEDRES_DATA", "/corpora")
     assert config.model(cfg, "qwen3-vl-2b")["dir"] == "/weights/Qwen3-VL-2B-Instruct"
     assert config.data_path("cxr_report/train.jsonl") == "/corpora/cxr_report/train.jsonl"
     assert config.data_path("/abs/x.jsonl") == "/abs/x.jsonl"
     # a run may bring its own model
-    cfg = config.load("cxr_report", "opd", overrides=["models={mine: {path: /m/mine, model_type: qwen3_vl}}", "student.model=mine"])
+    overrides = ["models={mine: {path: /m/mine, model_type: qwen3_vl}}", "student.model=mine"]
+    cfg = config.load("cxr_report", "opd", overrides=overrides)
     assert config.model(cfg, "mine")["dir"] == "/m/mine"
 
 
@@ -99,19 +105,25 @@ def test_recipes_resolve():
 
 def test_test_sets():
     sets = config.test_sets("cxr_report")
-    assert [(s["name"], s["file"]) for s in sets] == [("mimic_cxr", "data/cxr_report/test_mimic.jsonl"),
-                                                      ("iu_xray", "data/cxr_report/test_iu.jsonl")]
+    assert [(s["name"], s["file"]) for s in sets] == [
+        ("mimic_cxr", "data/cxr_report/test_mimic.jsonl"),
+        ("iu_xray", "data/cxr_report/test_iu.jsonl"),
+    ]
     assert sets[0]["generation"] == {"max_tokens": 1024, "max_model_len": 2048, "max_num_seqs": 128}
     # the two-teacher task is tested on sets of its source tasks, each with the settings of the task it comes from
     mixed = {s["name"]: s for s in config.test_sets("cxr_report_vqa")}
     assert list(mixed) == ["mimic_cxr", "iu_xray", "pmc_vqa", "medxpertqa_mm", "mmmu_health"]
-    assert (mixed["mimic_cxr"]["generation"]["max_tokens"], mixed["pmc_vqa"]["generation"]["max_tokens"]) == (1024, 4096)
+    assert (mixed["mimic_cxr"]["generation"]["max_tokens"], mixed["pmc_vqa"]["generation"]["max_tokens"]) == (
+        1024,
+        4096,
+    )
     assert mixed["pmc_vqa"]["file"] == "data/med_vqa/test_pmc_vqa.jsonl"
     with pytest.raises(ConfigError, match="unknown task"):
         config.test_sets("nope")
     # the validation set of a task takes the place of its test sets
-    val = config.test_sets("med_vqa", "validation")
-    assert [(s["name"], s["file"], s["generation"]["max_tokens"]) for s in val] == [("validation", "data/med_vqa/val.jsonl", 4096)]
+    (val,) = config.test_sets("med_vqa", "validation")
+    assert (val["name"], val["file"]) == ("validation", "data/med_vqa/val.jsonl")
+    assert val["generation"]["max_tokens"] == 4096
     with pytest.raises(ConfigError, match="no validation set"):
         config.test_sets("modality_experts", "validation")
 
@@ -128,8 +140,10 @@ def test_evaluation_blocks_belong_to_the_task(tmp_path, monkeypatch):
     monkeypatch.setenv("MEDRES_CONFIGS", str(tmp_path / "configs"))
     base = (tmp_path / "configs/tasks/med_vqa.yaml").read_text()
     task = yaml.safe_load(base)
-    for name, change, message in (("no_settings", {"generation": None}, "generation.eval"),
-                                  ("borrows", {"eval": {"test_from": {"cxr_report": ["chexpert"]}}}, "no test set chexpert")):
+    for name, change, message in (
+        ("no_settings", {"generation": None}, "generation.eval"),
+        ("borrows", {"eval": {"test_from": {"cxr_report": ["chexpert"]}}}, "no test set chexpert"),
+    ):
         (tmp_path / f"configs/tasks/{name}.yaml").write_text(yaml.safe_dump({**task, **change}))
         with pytest.raises(ConfigError, match=message):
             config.test_sets(name)

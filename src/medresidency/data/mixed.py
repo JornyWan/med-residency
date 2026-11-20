@@ -9,6 +9,7 @@ trains on the same prompts: --n per source, shuffled together.
 
 A mix that contains MIMIC-CXR rows is credentialed data, like its source.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,7 @@ def key(row: dict):
 
 
 def pick(prompts: list[dict], outputs: list[dict], n: int, seed: int = 0):
-    """`n` prompts that have a teacher output, with those outputs"""
+    """Draw `n` prompts that have a teacher output; returns the prompts and their outputs."""
     out = {key(r): r for r in outputs}
     rows = [r for r in prompts if key(r) in out]
     random.Random(seed).shuffle(rows)
@@ -45,18 +46,23 @@ def mix(sources: list[tuple[list[dict], list[dict]]], n: int):
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres data mixed", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--sources", nargs="+", default=[config.data_path("med_vqa"), config.data_path("cxr_report")],
-                   help="task data directories, each with train.jsonl and train_teacher.jsonl")
+    p = argparse.ArgumentParser(
+        prog="medres data mixed", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--sources",
+        nargs="+",
+        default=[config.data_path("med_vqa"), config.data_path("cxr_report")],
+        help="task data directories, each with train.jsonl and train_teacher.jsonl",
+    )
     p.add_argument("--n", type=int, default=10000, help="prompts per source")
     p.add_argument("--out", default=config.data_path("cxr_report_vqa"))
     a = p.parse_args()
     sources = [(jsonl.read(f"{d}/train.jsonl"), jsonl.read(f"{d}/train_teacher.jsonl")) for d in a.sources]
     prompts, outputs = mix(sources, a.n)
-    print("train.jsonl", jsonl.write(f"{a.out}/train.jsonl", prompts),
-          "| train_teacher.jsonl", jsonl.write(f"{a.out}/train_teacher.jsonl", outputs),
-          "| teachers", dict(Counter(r["teacher_tag"] for r in prompts)))
+    print("train.jsonl", jsonl.write(f"{a.out}/train.jsonl", prompts))
+    print("train_teacher.jsonl", jsonl.write(f"{a.out}/train_teacher.jsonl", outputs))
+    print("prompts per teacher", dict(Counter(r["teacher_tag"] for r in prompts)))
 
 
 if __name__ == "__main__":

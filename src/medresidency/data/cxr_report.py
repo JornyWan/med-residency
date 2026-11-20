@@ -17,6 +17,7 @@ and metadata tables) and ReXrank's ReXRank_MIMICCXR_test.json.
 MIMIC-CXR is credentialed data: everything this tool writes stays under your data-use agreement, and it prints
 counts and length statistics only, never report text.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,10 +36,19 @@ from medresidency.data.third_party import mimic_cxr_section_parser as section_pa
 
 SIZE = 512  # UniRG-CXR's input size
 PRE = "This is a radiology report generation task. Here is the context:"
-POST = ("Given the image and the context, directly provide the report in the following format:\n"
-        "Findings: [write the findings] Impression: [write the impression]\nNow write the report in the format above.")
-INDICATION = ("indication", "history", "reason for exam", "reason for examination", "clinical information",
-              "clinical history", "reason for study")
+POST = (
+    "Given the image and the context, directly provide the report in the following format:\n"
+    "Findings: [write the findings] Impression: [write the impression]\nNow write the report in the format above."
+)
+INDICATION = (
+    "indication",
+    "history",
+    "reason for exam",
+    "reason for examination",
+    "clinical information",
+    "clinical history",
+    "reason for study",
+)
 
 
 def clean(s) -> str:
@@ -53,8 +63,9 @@ def context(indication: str, comparison: str) -> str:
 
 
 def rexrank_context(s) -> str:
-    """ReXrank's context "Age: .. Gender: .. Indication: .. History: .. Comparison: .." -> indication and comparison.
-    Age and gender are not in the MIMIC-CXR reports, so the training prompts cannot have them; History joins
+    """Indication and comparison of ReXrank's context "Age: .. Gender: .. Indication: .. History: .. Comparison: ..".
+
+    Age and gender are not in the MIMIC-CXR reports, so the training prompts cannot have them. History joins
     Indication, as in `parse`."""
     parts = re.split(r"\b(Age|Gender|Indication|History|Comparison):", s if isinstance(s, str) else "")
     d = {}
@@ -66,7 +77,7 @@ def rexrank_context(s) -> str:
 
 
 def user_turn(ctx: str) -> str:
-    """`<image>` sits where UniRG-CXR's template puts the image: after the first sentence, before the context"""
+    """The prompt, with `<image>` where UniRG-CXR's template puts the image: after the first sentence."""
     return PRE + "<image>" + (ctx + "\n" if ctx else "") + POST
 
 
@@ -75,7 +86,7 @@ def reference(findings: str, impression: str) -> str:
 
 
 def parse(text: str) -> dict:
-    """sections of a MIMIC-CXR report: findings, impression, indication, comparison (those that are present)"""
+    """Sections of a MIMIC-CXR report: findings, impression, indication, comparison (those that are present)."""
     sections, names, _ = section_parser.section_text(text)
     d = {}
     for s, n in zip(sections, names):
@@ -90,6 +101,7 @@ def resize(job) -> bool:
     if os.path.exists(dst):
         return True
     from PIL import Image
+
     try:
         Image.open(src).convert("RGB").resize((SIZE, SIZE), Image.BICUBIC).save(dst, quality=95)
         return True
@@ -98,22 +110,36 @@ def resize(job) -> bool:
 
 
 def eval_row(x: dict) -> dict:
-    """an evaluation row: the prompt, plus the reference sections the report metrics need"""
+    """An evaluation row: the prompt, plus the reference sections the report metrics need."""
     extra = {"patient": x["patient"]} if x.get("patient") else {}
-    return jsonl.user_row(user_turn(x["context"]), os.path.abspath(x["img"]), id=x["id"], findings=x["findings"],
-                          impression=x["impression"], reference=reference(x["findings"], x["impression"]), **extra)
+    return jsonl.user_row(
+        user_turn(x["context"]),
+        os.path.abspath(x["img"]),
+        id=x["id"],
+        findings=x["findings"],
+        impression=x["impression"],
+        reference=reference(x["findings"], x["impression"]),
+        **extra,
+    )
+
+
+def section_counts(rows: list[dict]) -> str:
+    """How many rows have findings, an impression and context, for the progress output."""
+    return ", ".join(f"{sum(bool(x[k]) for x in rows)} with {k}" for k in ("findings", "impression", "context"))
 
 
 def _stats(name, xs):
     xs = sorted(xs)
-    print(f"  {name}: n={len(xs)} mean={statistics.mean(xs):.1f} p50={xs[len(xs) // 2]} p90={xs[int(len(xs) * .9)]} max={xs[-1]}")
+    p50, p90 = xs[len(xs) // 2], xs[int(len(xs) * 0.9)]
+    print(f"  {name}: n={len(xs)} mean={statistics.mean(xs):.1f} p50={p50} p90={p90} max={xs[-1]}")
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres data cxr-report", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres data cxr-report", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--mimic-cxr", required=True, help=".../mimic-cxr/2.0.0 (holds mimic-cxr-reports.zip)")
-    p.add_argument("--mimic-cxr-jpg", required=True, help=".../mimic-cxr-jpg/2.0.0 (holds files/ and the csv.gz tables)")
+    p.add_argument("--mimic-cxr-jpg", required=True, help=".../mimic-cxr-jpg/2.0.0 (holds files/ and the tables)")
     p.add_argument("--rexrank", required=True, help="ReXRank_MIMICCXR_test.json")
     p.add_argument("--out", default=config.data_path("cxr_report"))
     p.add_argument("--n-train", type=int, default=20000)
@@ -148,12 +174,17 @@ def main():
             missing += 1
             continue
         patient = re.search(r"/p(\d+)/s\d+/", src)
-        test.append(dict(id=study, src=src, img=f"{out}/img/{study}.jpg", context=rexrank_context(r.get("context")),
-                         findings=clean(r.get("section_findings")), impression=clean(r.get("section_impression")),
-                         patient=patient.group(1) if patient else None))
-    print("ReXrank test", len(rex), "found", len(test), "missing image", missing,
-          "| with findings", sum(bool(t["findings"]) for t in test),
-          "with impression", sum(bool(t["impression"]) for t in test), "with context", sum(bool(t["context"]) for t in test))
+        row = {
+            "id": study,
+            "src": src,
+            "img": f"{out}/img/{study}.jpg",
+            "context": rexrank_context(r.get("context")),
+            "findings": clean(r.get("section_findings")),
+            "impression": clean(r.get("section_impression")),
+            "patient": patient.group(1) if patient else None,
+        }
+        test.append(row)
+    print(f"ReXrank test: {len(rex)} studies, {missing} without their image; {section_counts(test)}")
 
     # the report of every train / validate study with a frontal image
     zf = zipfile.ZipFile(f"{a.mimic_cxr}/mimic-cxr-reports.zip")
@@ -167,15 +198,22 @@ def main():
         if "findings" not in d or "impression" not in d:
             continue
         dicom = sorted(frontal)[0][1]  # PA before AP, then the image id
-        pools[spl].append(dict(id=study, src=f"{jpg}/files/p{subject[:2]}/p{subject}/s{study}/{dicom}.jpg",
-                               img=f"{out}/img/{study}.jpg", findings=d["findings"], impression=d["impression"],
-                               context=context(d.get("indication", ""), d.get("comparison", "")), patient=subject))
+        row = {
+            "id": study,
+            "src": f"{jpg}/files/p{subject[:2]}/p{subject}/s{study}/{dicom}.jpg",
+            "img": f"{out}/img/{study}.jpg",
+            "findings": d["findings"],
+            "impression": d["impression"],
+            "context": context(d.get("indication", ""), d.get("comparison", "")),
+            "patient": subject,
+        }
+        pools[spl].append(row)
     print("eligible (frontal image, findings and impression):", {k: len(v) for k, v in pools.items()})
     for v in pools.values():
         v.sort(key=lambda x: x["id"])
     random.Random(0).shuffle(pools["train"])
     random.Random(1).shuffle(pools["validate"])
-    train, val = pools["train"][:a.n_train], pools["validate"][:a.n_val]
+    train, val = pools["train"][: a.n_train], pools["validate"][: a.n_val]
 
     with ProcessPoolExecutor(a.workers) as ex:
         ok = list(ex.map(resize, [(x["src"], x["img"]) for x in train + val + test], chunksize=64))
@@ -185,19 +223,24 @@ def main():
 
     prompts, labels = [], []
     for x in train:
-        row = jsonl.user_row(user_turn(x["context"]), os.path.abspath(x["img"]), teacher_tag=a.teacher_tag,
-                             solution=reference(x["findings"], x["impression"]))
+        row = jsonl.user_row(
+            user_turn(x["context"]),
+            os.path.abspath(x["img"]),
+            teacher_tag=a.teacher_tag,
+            solution=reference(x["findings"], x["impression"]),
+        )
         prompts.append(row)
         labels.append(jsonl.answered_row(row, row["solution"]))
-    for name, rows in (("train", prompts), ("train_labels", labels), ("val", map(eval_row, val)),
-                       ("test_mimic", map(eval_row, test))):
+    files = {"train": prompts, "train_labels": labels, "val": map(eval_row, val), "test_mimic": map(eval_row, test)}
+    for name, rows in files.items():
         print(f"{name}.jsonl", jsonl.write(f"{out}/{name}.jsonl", rows))
     for name, xs in (("train", train), ("test", test)):
         print(name, "reference words / context words:")
         _stats("reference", [len(reference(x["findings"], x["impression"]).split()) for x in xs])
         _stats("context", [len(x["context"].split()) for x in xs])
-        print("  with indication", sum("Indication:" in x["context"] for x in xs),
-              "with comparison", sum("Comparison:" in x["context"] for x in xs))
+        n_indication = sum("Indication:" in x["context"] for x in xs)
+        n_comparison = sum("Comparison:" in x["context"] for x in xs)
+        print(f"  with indication {n_indication}, with comparison {n_comparison}")
 
 
 if __name__ == "__main__":

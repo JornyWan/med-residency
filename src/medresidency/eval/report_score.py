@@ -18,10 +18,12 @@ BERTScore inside RadCliQ-v1 follows the metric's reference code (rajpurkarlab/CX
 rescaled, no IDF), on which the RadCliQ-v1 weights were fitted; RadEval's adapter adds IDF weights.
 GREEN is computed with a length cap (see `green_capped`).
 
-    medres eval report-score --data data/cxr_report/test_mimic.jsonl --generations evals/my_run/mimic_cxr.jsonl [--green]
+    medres eval report-score --data data/cxr_report/test_mimic.jsonl \\
+        --generations evals/my_run/mimic_cxr.jsonl [--green]
 
 Prints numbers only: reports generated from MIMIC-CXR are credentialed data.
 """
+
 import argparse
 import json
 import os
@@ -44,50 +46,63 @@ def norm(s):
 
 
 def findings_part(text):
-    """the Findings section of a response; a response without the heading counts up to its impression"""
+    """The Findings section of a response; a response without the heading counts up to its impression."""
     m = FIND.search(text)
     return norm(m.group(1) if m else re.split(r"impression\s*:", text, flags=re.I)[0])
 
 
 def views(data, gen):
-    """view -> (ids, references, hypotheses); an empty hypothesis becomes "." (the metrics need some text)"""
+    """View -> (ids, references, hypotheses); an empty hypothesis becomes "." (the metrics need some text)."""
     ids = sorted(data)
     fi = [i for i in ids if data[i]["findings"] and data[i]["impression"]]
     f = [i for i in ids if data[i]["findings"]]
-    return {"fi": (fi, [data[i]["reference"] for i in fi], [norm(gen[i]["text"]) or "." for i in fi]),
-            "f": (f, [data[i]["findings"] for i in f], [findings_part(gen[i]["text"]) or "." for i in f])}
+    return {
+        "fi": (fi, [data[i]["reference"] for i in fi], [norm(gen[i]["text"]) or "." for i in fi]),
+        "f": (f, [data[i]["findings"] for i in f], [findings_part(gen[i]["text"]) or "." for i in f]),
+    }
 
 
 def official_bertscore(metric):
-    """RadCliQ-v1's BERTScore as in its reference code (USE_IDF = False), instead of RadEval's IDF-weighted one"""
+    """Give RadCliQ-v1 the BERTScore of its reference code (USE_IDF = False) instead of RadEval's IDF-weighted one."""
     from radeval.metrics.bertscore._vendor import BERTScorer
-    scorer = BERTScorer(model_type="distilroberta-base", num_layers=5, batch_size=64, idf=False, lang="en",
-                        rescale_with_baseline=True)
+
+    scorer = BERTScorer(
+        model_type="distilroberta-base", num_layers=5, batch_size=64, idf=False, lang="en", rescale_with_baseline=True
+    )
     metric._get_bert_scorer = lambda refs: scorer
     return metric
 
 
 def radcliq_metric():
     from radeval.metrics.RadCliQv1.radcliq import CompositeMetric
+
     return official_bertscore(CompositeMetric())
 
 
 def composite(metric, refs, hyps):
-    """RadCliQ-v1 (lower is better) and its parts, per study"""
+    """RadCliQ-v1 (lower is better) and its parts, per study."""
     sub = metric._compute_sub_metrics(refs, hyps)
     X = metric._build_matrix(sub)
     Xn = np.hstack([metric.scaler.transform(X), np.ones((X.shape[0], 1))])
-    out = {"radcliq": Xn @ metric.coefs, "radgraph": sub["radgraph"], "bertscore": sub["bertscore"],
-           "semb": sub["semb_score"], "bleu2": np.asarray(sub["bleu_score"], dtype=float)}
+    out = {
+        "radcliq": Xn @ metric.coefs,
+        "radgraph": sub["radgraph"],
+        "bertscore": sub["bertscore"],
+        "semb": sub["semb_score"],
+        "bleu2": np.asarray(sub["bleu_score"], dtype=float),
+    }
     return {k: np.asarray(v, dtype=float) for k, v in out.items()}
 
 
 def green_capped(scorer, refs, hyps, max_words=300, max_tokens=512):
-    """GREEN per study, with a length cap. GREEN pads each batch and gives prompt + judge response 2,048 tokens in
-    all, so one looping hypothesis shrinks the response budget of its batch-mates (a judge response cut before
-    "[Matched Findings]" scores 0) or raises an error. Each hypothesis is cut to its first `max_words` words and then
-    to `max_tokens` judge tokens (words alone do not bound the tokens of looping text), and the studies go through in
-    batches sorted by length, so that a report is never batched with longer ones. Only degenerate outputs are cut.
+    """GREEN per study, with a length cap.
+
+    GREEN pads each batch and gives prompt + judge response 2,048 tokens in all, so one looping hypothesis shrinks
+    the response budget of its batch-mates (a judge response cut before "[Matched Findings]" scores 0) or raises an
+    error. Each hypothesis is therefore cut to its first `max_words` words and then to `max_tokens` judge tokens
+    (words alone do not bound the tokens of looping text), and the studies go through in batches sorted by length,
+    so that a report is never batched with longer ones. Only degenerate outputs are cut.
+
     Returns the scores in input order (None where the judge's response could not be parsed) and the number of
     hypotheses cut."""
     tok = scorer.tokenizer
@@ -110,26 +125,30 @@ def green_capped(scorer, refs, hyps, max_words=300, max_tokens=512):
 
 
 class Metrics:
-    """the metric models, loaded once for all generation files"""
+    """The metric models, loaded once for all generation files."""
 
     def __init__(self, text_metrics: bool, green: bool, green_batch: int):
         self.radcliq = self.rate = self.chexbert = self.green = None
         if text_metrics:
             from radeval.metrics.f1chexbert.adapter import F1CheXbertMetric
             from radeval.metrics.RaTEScore.adapter import RaTEScoreMetric
+
             self.radcliq, self.rate, self.chexbert = radcliq_metric(), RaTEScoreMetric(), F1CheXbertMetric()
         if green:
             from radeval.metrics.green_score.adapter import GreenMetric
+
             self.green = GreenMetric()._scorer
             self.green.batch_size = green_batch
 
 
 def score_file(m: Metrics, data: dict, gen_path: str, add_green: bool) -> dict:
-    prefix = gen_path[:-len(".jsonl")] if gen_path.endswith(".jsonl") else gen_path
+    prefix = gen_path[: -len(".jsonl")] if gen_path.endswith(".jsonl") else gen_path
     gen = {r["id"]: r for r in read(gen_path)}
     if set(gen) != set(data):
-        raise SystemExit(f"error: {gen_path} has responses for {len(set(gen) & set(data))} of {len(data)} studies: "
-                         "generate for the whole test file (all shards) before scoring")
+        raise SystemExit(
+            f"error: {gen_path} has responses for {len(set(gen) & set(data))} of {len(data)} studies: "
+            "generate for the whole test file (all shards) before scoring"
+        )
     ids, vs = sorted(data), views(data, gen)
     if add_green:  # keep the numbers of an earlier scoring of the same responses
         old = {r["id"]: r for r in read(prefix + ".scores.jsonl")}
@@ -158,9 +177,12 @@ def score_file(m: Metrics, data: dict, gen_path: str, add_green: bool) -> dict:
             per[i]["fi"]["green"] = x
         parsed = [x for x in scores if x is not None]
         summ.update(fi_green=float(np.mean(parsed)), green_unparsed=len(scores) - len(parsed), green_cut=int(cut))
-    summ.update(n=len(ids), format_ok=float(np.mean([bool(FI.search(gen[i]["text"])) for i in ids])),
-                tokens_mean=float(np.mean([gen[i]["n_tokens"] for i in ids])),
-                truncated=float(np.mean([gen[i]["truncated"] for i in ids])))
+    summ.update(
+        n=len(ids),
+        format_ok=float(np.mean([bool(FI.search(gen[i]["text"])) for i in ids])),
+        tokens_mean=float(np.mean([gen[i]["n_tokens"] for i in ids])),
+        truncated=float(np.mean([gen[i]["truncated"] for i in ids])),
+    )
     with open(prefix + ".scores.jsonl.tmp", "w") as f:
         for i in ids:
             f.write(json.dumps(dict(id=i, **per[i])) + "\n")
@@ -171,11 +193,12 @@ def score_file(m: Metrics, data: dict, gen_path: str, add_green: bool) -> dict:
 
 
 def main():
-    p = argparse.ArgumentParser(prog="medres eval report-score", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="medres eval report-score", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--data", required=True, help="test file with findings, impression and reference of every study")
     p.add_argument("--generations", required=True, nargs="+", help="output file(s) of `medres eval generate`")
-    p.add_argument("--green", action="store_true", help="also GREEN (a 7B judge: about 20 GPU-minutes per 2,000 reports)")
+    p.add_argument("--green", action="store_true", help="also GREEN (a 7B judge, ~20 GPU-minutes per 2,000 reports)")
     p.add_argument("--add-green", action="store_true", help="only GREEN, added to an earlier scoring of the same files")
     p.add_argument("--green-batch", type=int, default=16)
     a = p.parse_args()
@@ -183,7 +206,8 @@ def main():
     m = Metrics(text_metrics=not a.add_green, green=a.green or a.add_green, green_batch=a.green_batch)
     for path in a.generations:
         summ = score_file(m, data, path, a.add_green)
-        print(path, json.dumps({k: round(v, 4) if isinstance(v, float) else v for k, v in summ.items()}), flush=True)
+        rounded = {k: round(v, 4) if isinstance(v, float) else v for k, v in summ.items()}
+        print(path, json.dumps(rounded), flush=True)
 
 
 if __name__ == "__main__":
