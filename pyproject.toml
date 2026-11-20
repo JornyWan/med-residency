@@ -21,13 +21,16 @@ classifiers = [
 dependencies = ["pyyaml>=6", "numpy>=1.24"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "pillow"]  # pillow: the test of a data builder writes images
 
 [project.scripts]
 medres = "medresidency.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+medresidency = ["data/third_party/*.txt", "data/third_party/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
