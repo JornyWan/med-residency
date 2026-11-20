@@ -1,5 +1,5 @@
-# Two teachers, "Two-stage (report)" in benchmarks/README.md: stage 1 is offline KD on the report teacher's outputs only.
-# The task's default two-stage run uses both teachers' outputs in stage 1 ("Two-stage (both)").
+# Two teachers, "Two-stage (report)" in benchmarks/README.md: stage 1 is offline KD on the report teacher's outputs
+# only. The task's default two-stage run uses both teachers' outputs in stage 1 ("Two-stage (both)").
 task: cxr_report_vqa
 method: {name: two_stage}
 data: {teacher_outputs: cxr_report/train_teacher.jsonl}

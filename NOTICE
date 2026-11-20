@@ -1,0 +1,19 @@
+MedResidency
+Copyright 2026 The MedResidency authors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository includes third-party software:
+
+  src/medresidency/data/third_party/mimic_cxr_section_parser.py
+    The report section parser of MIT-LCP/mimic-cxr (https://github.com/MIT-LCP/mimic-cxr),
+    Copyright (c) 2019 MIT Laboratory for Computational Physiology, MIT License
+    (src/medresidency/data/third_party/LICENSE.mimic-cxr-code.txt).
+
+The data builders reproduce the prompt templates of the models they prepare data for, so that a teacher is queried
+in the format it was trained on: the findings + impression template of UniRG-CXR (microsoft/UniRG-CXR) and the
+training and evaluation templates of Med-R1 (yuxianglai117/Med-R1).
+
+MedResidency drives, but does not include, ms-swift (modelscope/ms-swift, Apache-2.0), vLLM (vllm-project/vllm,
+Apache-2.0) and RadEval. It contains no data and no model weights: every dataset and model it can download or
+process keeps its own licence and terms of use (docs/data.md).

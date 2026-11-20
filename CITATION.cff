@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: "MedResidency: open post-training of medical vision-language models"
+message: >-
+  If you use this software, please cite it as below. The paper that introduces AdaOPD and the benchmark in
+  benchmarks/README.md is under review; its reference will be added here.
+type: software
+authors:
+  - name: "The MedResidency authors"
+version: 0.1.0
+date-released: "2026-11-20"
+license: Apache-2.0
+keywords:
+  - medical vision-language models
+  - post-training
+  - knowledge distillation
+  - on-policy distillation
+  - reinforcement learning

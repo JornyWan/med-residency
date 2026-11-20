@@ -16,7 +16,7 @@ medix-r1-8b: {hub: MBZUAI/MediX-R1-8B, model_type: qwen3_vl}         # reasoning
 qoq-med3-8b: {hub: ddvd233/QoQ-Med3-VL-8B, model_type: qwen3_vl}     # multimodal clinical reasoning, 8B
 sonoreasoner-8b: {hub: QingboKang/SonoReasoner-8B, model_type: qwen3_vl}  # ultrasound reasoning, 8B
 
-# --- teachers (Qwen2-VL family): the eight modality experts of Med-R1 --------------------------------------------------
+# --- teachers (Qwen2-VL family): the eight modality experts of Med-R1 -----------------------------------------------
 med-r1-ct: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_CT, model_type: qwen2_vl}
 med-r1-mri: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_MRI, model_type: qwen2_vl}
 med-r1-xray: {hub: yuxianglai117/Med-R1, path: Med-R1/VQA_X-Ray, model_type: qwen2_vl}
