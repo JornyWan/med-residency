@@ -10,6 +10,9 @@ stripped of surrounding white space.
     medres data teacher-outputs --prompts data/cxr_report/train.jsonl --generations gen.jsonl \\
         --out data/cxr_report/train_teacher.jsonl
 
+With several teachers, `--tags` keeps the outputs of some of them: AdaOPD replays the teachers that are far from the
+student (`medres probe gap`), e.g. `--tags CT MRI US --out data/modality_experts/train_teacher_far.jsonl`.
+
 Outputs of a teacher on credentialed data (MIMIC-CXR) are credentialed data. Prints counts only.
 """
 from __future__ import annotations
@@ -19,7 +22,7 @@ import argparse
 from medresidency import jsonl
 
 
-def join(prompts: list[dict], generations: list[dict]) -> tuple[list[dict], dict]:
+def join(prompts: list[dict], generations: list[dict], tags=None) -> tuple[list[dict], dict]:
     gens = {}
     for g in generations:
         if g["id"] in gens:
@@ -35,7 +38,7 @@ def join(prompts: list[dict], generations: list[dict]) -> tuple[list[dict], dict
         reason = "truncated" if g["truncated"] else "malformed" if g.get("malformed") else None
         if reason:
             dropped[reason] += 1
-        else:
+        elif not tags or p.get("teacher_tag") in tags:
             rows.append(jsonl.answered_row(p, g["text"].strip()))
     tokens = sorted(g["n_tokens"] for g in gens.values())
     return rows, {"prompts": len(prompts), "kept": len(rows), **dropped,
@@ -49,8 +52,9 @@ def main():
     p.add_argument("--prompts", required=True, help="the task's train.jsonl")
     p.add_argument("--generations", required=True, nargs="+", help="output file(s) of `medres eval generate`")
     p.add_argument("--out", required=True, help="the task's train_teacher.jsonl")
+    p.add_argument("--tags", nargs="+", help="keep the outputs of these teachers only (default: all)")
     a = p.parse_args()
-    rows, stats = join(jsonl.read(a.prompts), [g for f in a.generations for g in jsonl.read(f)])
+    rows, stats = join(jsonl.read(a.prompts), [g for f in a.generations for g in jsonl.read(f)], a.tags)
     jsonl.write(a.out, rows)
     print(a.out, stats)
 

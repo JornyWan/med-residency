@@ -134,6 +134,11 @@ def test_teacher_outputs_join():
     assert all(set(r) == {"messages", "images"} for r in rows)  # no reference, no tag
     assert stats == {"prompts": 4, "kept": 2, "truncated": 1, "malformed": 1, "tokens_mean": 25.0, "tokens_p50": 30,
                      "tokens_p90": 40}
+    for i, tag in enumerate(("CT", "X-Ray", "CT", "MRI")):
+        prompts[i]["teacher_tag"] = tag
+    far, far_stats = teacher_outputs.join(prompts, gens, tags=["CT", "MRI"])
+    assert [r["messages"][1]["content"] for r in far] == ["answer 0", "answer 3"] and far_stats["kept"] == 2
+    assert teacher_outputs.join(prompts, gens, tags=["X-Ray"])[0] == []  # its only output is truncated
     with pytest.raises(SystemExit, match="3 of 4"):
         teacher_outputs.join(prompts, gens[:3])
     with pytest.raises(SystemExit, match="two generations"):
