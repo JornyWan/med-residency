@@ -225,16 +225,24 @@ def environment(cfg: dict, cache: str) -> dict:
     return {k: v for k, v in add.items() if k not in os.environ}
 
 
+def code_version() -> str | None:
+    """The commit of this clone, or None when git is not installed or the package is not in a clone."""
+    try:
+        git = subprocess.run(
+            ["git", "-C", str(Path(__file__).resolve().parents[2]), "describe", "--always", "--dirty"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:  # compute nodes often have no git
+        return None
+    return git.stdout.strip() or None
+
+
 def _record(stage: methods.Stage, gpus: list[str], resumed_from: int) -> dict:
     versions = {}
     for package in VERSIONS:
         with contextlib.suppress(metadata.PackageNotFoundError):
             versions[package] = metadata.version(package)
-    git = subprocess.run(
-        ["git", "-C", str(Path(__file__).resolve().parents[2]), "describe", "--always", "--dirty"],
-        capture_output=True,
-        text=True,
-    )
     return {
         "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "stage": stage.name,
@@ -242,7 +250,7 @@ def _record(stage: methods.Stage, gpus: list[str], resumed_from: int) -> dict:
         "host": socket.gethostname(),
         "gpus": gpus,
         "slurm_job": os.environ.get("SLURM_JOB_ID"),
-        "code": git.stdout.strip() or None,
+        "code": code_version(),
         "versions": versions,
     }
 

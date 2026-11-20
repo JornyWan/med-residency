@@ -63,6 +63,17 @@ def test_last_checkpoint(tmp_path):
     assert launch.last_checkpoint(tmp_path) == 100
 
 
+def test_launch_record_on_a_node_without_git(monkeypatch):
+    def no_git(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(launch.subprocess, "run", no_git)
+    (stage,) = methods.build(config.load("med_vqa", "opd"))
+    record = launch._record(stage, ["0", "1"], 0)
+    assert record["code"] is None
+    assert record["stage"] == stage.name and record["gpus"] == ["0", "1"]
+
+
 def test_environment_keeps_what_the_caller_set(monkeypatch):
     cfg = config.load("cxr_report", "opd")
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
