@@ -100,8 +100,8 @@ and teacher start far apart. Measure the pair with `medres probe gap`
 
 **The job was cut by the time limit or preempted**
 
-Submit the same command again with `run.resume=true`. Checkpoints keep the optimizer state, finished stages are
-skipped, and AdaOPD restores its controller from `logging.jsonl`. At most `train.save_steps` steps are repeated.
+Submit the same command again with `run.resume=true`. The last checkpoint holds the optimizer state, finished stages
+are skipped, and AdaOPD restores its controller from `logging.jsonl`. At most `train.save_steps` steps are repeated.
 
 ## Evaluation
 

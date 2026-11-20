@@ -109,7 +109,7 @@ class Run:
             "warmup_ratio": 0,
             "max_steps": steps,
             "save_steps": t["save_steps"],
-            "save_only_model": False,  # checkpoints keep the optimizer state: an interrupted run can be resumed
+            "save_only_model": False,  # saved with the optimizer state: an interrupted run can be resumed
             "deepspeed": "zero2",
             "seed": self.seed,
             "data_seed": self.seed,

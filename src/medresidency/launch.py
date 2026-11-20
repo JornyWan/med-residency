@@ -149,6 +149,21 @@ def last_checkpoint(output_dir) -> int:
     return max((int(s) for s in steps if s.isdigit()), default=0)
 
 
+def drop_stale_optimizer_states(output_dir) -> None:
+    """Delete the optimizer state of every checkpoint older than the newest complete one.
+
+    A resume starts from the newest checkpoint, and an optimizer state is several times the size of the weights.
+    ms-swift moves the `last-checkpoint` link once a checkpoint is written completely.
+    """
+    link = Path(output_dir) / "last-checkpoint"
+    if not link.is_symlink():
+        return
+    newest = int(os.readlink(link).rsplit("-", 1)[1])
+    for state in Path(output_dir).glob("checkpoint-*/global_step*"):  # the directory DeepSpeed writes
+        if int(state.parent.name.rsplit("-", 1)[1]) < newest:
+            shutil.rmtree(state, ignore_errors=True)
+
+
 def _get(url: str) -> str | None:
     try:
         with urllib.request.urlopen(url, timeout=10) as r:
@@ -339,6 +354,8 @@ def run_stage(cfg: dict, stage: methods.Stage, gpus: list[str], env_add: dict, m
                 except subprocess.TimeoutExpired:
                     for server in servers:
                         server.check()
+                    if not cfg["run"]["keep_optimizer_states"]:
+                        drop_stale_optimizer_states(stage.output_dir)
         finally:
             if trainer.poll() is None:
                 trainer.terminate()
@@ -348,6 +365,8 @@ def run_stage(cfg: dict, stage: methods.Stage, gpus: list[str], env_add: dict, m
                     trainer.kill()
         if code:
             raise LaunchError(f"stage {stage.name}: ms-swift exited with code {code}")
+        if not cfg["run"]["keep_optimizer_states"]:
+            drop_stale_optimizer_states(stage.output_dir)
     finally:
         for server in servers:
             server.stop()

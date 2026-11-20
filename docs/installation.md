@@ -128,6 +128,9 @@ cards for the 4B student. `hardware.gpus` and `hardware.teacher_gpus` change the
 Evaluation and the gap probe take one GPU. Scores of the same checkpoint differ slightly between GPU types, so
 evaluate the checkpoints you want to compare on the same type.
 
+A 300-step run of a 2B student writes up to 80 GB of checkpoints while it trains
+([concepts.md](concepts.md#resuming)).
+
 ## SLURM
 
 `scripts/slurm/` has three templates. They take the partition on the command line and pass everything after the

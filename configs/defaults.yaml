@@ -5,6 +5,7 @@ run:
   seed: 42                   # model seed and data-order seed (ms-swift keeps data_seed at 42 unless it is passed)
   output_root: runs
   resume: false              # continue from the last checkpoint of this run
+  keep_optimizer_states: false  # true: older checkpoints keep theirs too (24 GB each for a 2B student)
 student:
   model: null                # a name of configs/models.yaml
   init: null                 # start from this checkpoint directory instead of the released weights

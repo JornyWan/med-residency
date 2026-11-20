@@ -91,7 +91,7 @@ checkpoints, unless the run is being resumed.
 
 ```
 runs/cxr_report_adaopd_s42/
-    checkpoint-50/ ... checkpoint-300/     model, optimizer state
+    checkpoint-50/ ... checkpoint-300/     model weights; the newest one also holds the optimizer state
     logging.jsonl                          one line per logged step (loss, lang_gap, adaopd_mu, ...)
     medres/
         config.yaml                        the resolved configuration
@@ -142,8 +142,8 @@ scale.
 
 ## Resuming
 
-Checkpoints keep the optimizer state. A run that was interrupted continues from its last checkpoint when the same
-command is run again with `run.resume=true`:
+A checkpoint is saved with the optimizer state. A run that was interrupted continues from its last checkpoint when
+the same command is run again with `run.resume=true`:
 
 ```bash
 medres train --task cxr_report --method adaopd --seed 42 run.resume=true
@@ -151,6 +151,13 @@ medres train --task cxr_report --method adaopd --seed 42 run.resume=true
 
 Stages that already have their final checkpoint are skipped. AdaOPD restores its controller from `logging.jsonl`,
 so the resumed run continues with the smoothed gap and the first-step gap of the original run.
+
+The optimizer state is the large part of a checkpoint: about 24 GB for a 2B student, next to 5 GB of weights. A
+resume needs only the newest one, so the launcher deletes the state of a checkpoint once a newer checkpoint is
+complete; the weights of every checkpoint stay. A 300-step run then takes up to 80 GB while it trains and about
+55 GB when it has finished. If you will not continue a finished run, delete its last optimizer state as well
+(`rm -r runs/<run>/checkpoint-*/global_step*`), which leaves 30 GB. `run.keep_optimizer_states=true` turns the
+deletion off; the same run then takes 175 GB.
 
 ## What the launcher sets in the environment
 

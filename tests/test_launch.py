@@ -64,6 +64,21 @@ def test_last_checkpoint(tmp_path):
     assert launch.last_checkpoint(tmp_path) == 100
 
 
+def test_only_the_newest_checkpoint_keeps_its_optimizer_state(tmp_path):
+    for step in (50, 100, 150):
+        state = tmp_path / f"checkpoint-{step}" / f"global_step{step}"
+        state.mkdir(parents=True)
+        (state / "optim_states.pt").touch()
+        (state.parent / "model.safetensors").touch()
+    launch.drop_stale_optimizer_states(tmp_path)  # no link yet: no checkpoint is known to be complete
+    assert len(list(tmp_path.glob("checkpoint-*/global_step*"))) == 3
+    (tmp_path / "last-checkpoint").symlink_to("checkpoint-100")  # checkpoint-150 is still being written
+    launch.drop_stale_optimizer_states(tmp_path)
+    assert sorted(p.name for p in tmp_path.glob("checkpoint-*/global_step*")) == ["global_step100", "global_step150"]
+    assert len(list(tmp_path.glob("checkpoint-*/model.safetensors"))) == 3  # the weights stay
+    assert launch.last_checkpoint(tmp_path) == 150
+
+
 def test_launch_record_on_a_node_without_git(monkeypatch):
     def no_git(*args, **kwargs):
         raise FileNotFoundError("git")
